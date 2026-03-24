@@ -103,7 +103,7 @@ export type ScreenerOperator = ">" | "<" | "=" | "crosses above" | "crosses belo
 export type LogicalJoin = "AND" | "OR";
 
 export interface BasicScreenerFilters {
-  exchange: "NYSE" | "NASDAQ" | "AMEX" | "OTC" | "All";
+  exchange: "NYSE" | "NASDAQ" | "AMEX" | "TSX" | "B3" | "LSE" | "OTC" | "All";
   marketCapRange: {
     min: number | null;
     max: number | null;

@@ -58,6 +58,9 @@ export function ScreenerConfig({ collapsed = false, embedded = false }: Screener
             <option value="NYSE">NYSE</option>
             <option value="NASDAQ">NASDAQ</option>
             <option value="AMEX">AMEX</option>
+            <option value="TSX">TSX</option>
+            <option value="B3">B3 (Brasil)</option>
+            <option value="LSE">LSE</option>
             <option value="OTC">OTC</option>
           </select>
         </label>

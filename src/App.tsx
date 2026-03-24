@@ -7,6 +7,7 @@ import { MainChart } from "./components/chart/MainChart";
 import { SettingsModal } from "./components/shared/SettingsModal";
 import { Toast, type ToastMessage } from "./components/shared/Toast";
 import { CompareView } from "./components/workspace/CompareView";
+import { CarlaSetupView } from "./components/workspace/CarlaSetupView";
 import { LiveMonitorView } from "./components/workspace/LiveMonitorView";
 import { MarketSentimentView } from "./components/workspace/MarketSentimentView";
 import { NewsAnalysisView } from "./components/workspace/NewsAnalysisView";
@@ -198,6 +199,10 @@ function App() {
         ) : workspaceTab === "news-analysis" ? (
           <div className="min-w-0 flex-1">
             <NewsAnalysisView ticker={selectedTicker} timeframe={timeframe} />
+          </div>
+        ) : workspaceTab === "carla-setup" ? (
+          <div className="min-w-0 flex-1">
+            <CarlaSetupView />
           </div>
         ) : workspaceTab === "market-sentiment" ? (
           <div className="min-w-0 flex-1">

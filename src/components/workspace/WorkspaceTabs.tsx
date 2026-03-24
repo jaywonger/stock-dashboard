@@ -1,4 +1,4 @@
-export type WorkspaceTabId = "dashboard" | "news-analysis" | "market-sentiment" | "live-monitor" | "compare";
+export type WorkspaceTabId = "dashboard" | "carla-setup" | "news-analysis" | "market-sentiment" | "live-monitor" | "compare";
 
 interface WorkspaceTabsProps {
   activeTab: WorkspaceTabId;
@@ -7,6 +7,7 @@ interface WorkspaceTabsProps {
 
 const tabs: Array<{ id: WorkspaceTabId; label: string; live?: boolean }> = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "carla-setup", label: "Carla's Setup" },
   { id: "news-analysis", label: "News Analysis" },
   { id: "market-sentiment", label: "Market Sentiment" },
   { id: "live-monitor", label: "Live Monitor", live: true },

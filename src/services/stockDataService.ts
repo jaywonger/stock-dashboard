@@ -84,6 +84,14 @@ export class HttpStockDataService implements StockDataProvider {
 export class FallbackStockDataService implements StockDataProvider {
   id = "mock" as const;
   private providerTimeoutMs = Number(process.env.PROVIDER_TIMEOUT_MS ?? 10_000);
+  private providerFailureCooldownMs = Number(process.env.PROVIDER_FAILURE_COOLDOWN_MS ?? 30_000);
+  private cursorByOperation: Record<"quote" | "ohlcv" | "search" | "marketStatus", number> = {
+    quote: 0,
+    ohlcv: 0,
+    search: 0,
+    marketStatus: 0
+  };
+  private providerState = new Map<string, { failures: number; coolDownUntil: number }>();
   constructor(private providers: StockDataProvider[]) {}
 
   private withTimeout<T>(providerId: string, promise: Promise<T>): Promise<T> {
@@ -101,12 +109,43 @@ export class FallbackStockDataService implements StockDataProvider {
     });
   }
 
-  private async tryProviders<T>(fn: (provider: StockDataProvider) => Promise<T>): Promise<T> {
+  private getProviderOrder(operation: keyof FallbackStockDataService["cursorByOperation"]): StockDataProvider[] {
+    if (this.providers.length <= 1) return this.providers;
+    const now = Date.now();
+    const active = this.providers.filter((provider) => {
+      const state = this.providerState.get(provider.id);
+      return !state || state.coolDownUntil <= now;
+    });
+    const candidates = active.length > 0 ? active : this.providers;
+    const start = this.cursorByOperation[operation] % Math.max(candidates.length, 1);
+    const rotated = [...candidates.slice(start), ...candidates.slice(0, start)];
+    this.cursorByOperation[operation] = (this.cursorByOperation[operation] + 1) % Math.max(candidates.length, 1);
+    return rotated;
+  }
+
+  private markProviderResult(providerId: string, success: boolean) {
+    const prev = this.providerState.get(providerId) ?? { failures: 0, coolDownUntil: 0 };
+    if (success) {
+      this.providerState.set(providerId, { failures: 0, coolDownUntil: 0 });
+      return;
+    }
+    const failures = prev.failures + 1;
+    const penalty = Math.min(this.providerFailureCooldownMs * failures, this.providerFailureCooldownMs * 6);
+    this.providerState.set(providerId, { failures, coolDownUntil: Date.now() + penalty });
+  }
+
+  private async tryProviders<T>(
+    operation: keyof FallbackStockDataService["cursorByOperation"],
+    fn: (provider: StockDataProvider) => Promise<T>
+  ): Promise<T> {
     let lastError: unknown;
-    for (const provider of this.providers) {
+    for (const provider of this.getProviderOrder(operation)) {
       try {
-        return await this.withTimeout(provider.id, fn(provider));
+        const result = await this.withTimeout(provider.id, fn(provider));
+        this.markProviderResult(provider.id, true);
+        return result;
       } catch (error) {
+        this.markProviderResult(provider.id, false);
         lastError = error;
       }
     }
@@ -114,19 +153,19 @@ export class FallbackStockDataService implements StockDataProvider {
   }
 
   async getQuote(ticker: string): Promise<Quote> {
-    return this.tryProviders((provider) => provider.getQuote(ticker));
+    return this.tryProviders("quote", (provider) => provider.getQuote(ticker));
   }
 
   async getOHLCV(ticker: string, timeframe: Timeframe, from: Date, to: Date): Promise<OHLCV[]> {
-    return this.tryProviders((provider) => provider.getOHLCV(ticker, timeframe, from, to));
+    return this.tryProviders("ohlcv", (provider) => provider.getOHLCV(ticker, timeframe, from, to));
   }
 
   async search(query: string): Promise<SearchResult[]> {
-    return this.tryProviders((provider) => provider.search(query));
+    return this.tryProviders("search", (provider) => provider.search(query));
   }
 
   async getMarketStatus(): Promise<MarketStatus> {
-    return this.tryProviders((provider) => provider.getMarketStatus());
+    return this.tryProviders("marketStatus", (provider) => provider.getMarketStatus());
   }
 }
 
