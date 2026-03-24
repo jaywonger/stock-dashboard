@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-server
+.env
+server/db/stocks.db
+server/db/stocks.db-*
+coverage
+*.log
+*.err
+*.tsbuildinfo

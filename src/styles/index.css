@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: "DM Sans", sans-serif;
+  background: #070a11;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b3344 #0f141c;
+}
+
+*::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0f141c;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #2b3344;
+  border-radius: 9999px;
+}
+
+html,
+body,
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 520px at 15% -10%, rgba(77, 159, 255, 0.12), transparent 55%),
+    radial-gradient(980px 420px at 100% -20%, rgba(0, 212, 170, 0.08), transparent 46%),
+    linear-gradient(180deg, #090d17 0%, #060a10 100%);
+  color: #e8edf7;
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(17, 24, 35, 0.82) 0%, rgba(11, 17, 27, 0.82) 100%);
+  border: 1px solid rgba(42, 55, 78, 0.68);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.02) inset,
+    0 10px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.ticker-font {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-flash-up {
+  transition: background-color 100ms ease-out;
+  background-color: rgba(0, 212, 170, 0.12);
+}
+
+.price-flash-down {
+  transition: background-color 100ms ease-out;
+  background-color: rgba(255, 77, 106, 0.12);
+}
+
+.monitor-grid {
+  background-image:
+    linear-gradient(to right, rgba(55, 71, 97, 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(55, 71, 97, 0.14) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.intel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(58, 77, 109, 0.72);
+  background: rgba(10, 17, 27, 0.72);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #98a2b3;
+}
+
+.intel-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #7f8aa3;
+}
