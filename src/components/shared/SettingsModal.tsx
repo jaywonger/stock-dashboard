@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Eye, EyeOff, X } from "lucide-react";
+import { Eye, EyeOff, X, Bot } from "lucide-react";
 import { useSettingsStore } from "../../store/settingsStore";
 
 interface SettingsModalProps {
@@ -12,14 +12,38 @@ const sourceFields: Array<{ label: string; key: keyof ReturnType<typeof useSetti
   { label: "Alpha Vantage API Key", key: "alphaVantageApiKey" },
   { label: "Finnhub API Key", key: "finnhubApiKey" },
   { label: "NewsAPI Key", key: "newsApiKey" },
-  { label: "Benzinga API Key", key: "benzingaApiKey" },
-  { label: "FRED API Key", key: "fredApiKey" }
+  { label: "Benzinga API Key", key: "benzingaApiKey" }
+];
+
+const aiFields: Array<{ label: string; key: string; placeholder?: string; hint?: string }> = [
+  { label: "LiteLLM Model", key: "litellmModel", placeholder: "gemini/gemini-2.0-flash", hint: "Format: provider/model-name" },
+  { label: "LiteLLM API Key", key: "litellmApiKey", placeholder: "sk-..." },
+  { label: "LiteLLM Base URL", key: "litellmBaseUrl", hint: "Optional: Custom LiteLLM proxy server" },
+  { label: "Gemini API Key", key: "geminiApiKey", hint: "Google AI Studio" },
+  { label: "Claude API Key", key: "claudeApiKey", hint: "Anthropic Console" },
+  { label: "OpenAI API Key", key: "openaiApiKey", hint: "platform.openai.com" },
+  { label: "OpenAI Base URL", key: "openaiBaseUrl", placeholder: "https://api.openai.com/v1", hint: "For compatible APIs (DeepSeek, etc.)" },
+  { label: "OpenAI Model", key: "openaiModel", placeholder: "gpt-4o-mini" },
 ];
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const settings = useSettingsStore();
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [testStatus, setTestStatus] = useState<Record<string, string>>({});
+  const [agentEnabled, setAgentEnabled] = useState(false);
+
+  // Load AI settings from localStorage
+  const getAiSetting = (key: string) => localStorage.getItem(`ai_${key}`) || "";
+  const setAiSetting = (key: string, value: string) => {
+    localStorage.setItem(`ai_${key}`, value);
+    // Also sync to store for AI keys
+    if (key.endsWith("Key") || key.endsWith("Url") || key === "litellmModel" || key === "openaiModel") {
+      const storeKey = key as keyof typeof settings.keys;
+      if (storeKey in settings.keys) {
+        settings.setAiApiKey(storeKey, value);
+      }
+    }
+  };
 
   const providerOrder = useMemo(
     () =>
@@ -155,6 +179,66 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             />
             Enable browser notifications for price alerts
           </label>
+        </section>
+
+        {/* AI Agent Configuration */}
+        <section className="mt-6 rounded-lg border border-border bg-panel p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Bot className="text-bullish" size={20} />
+            <h3 className="font-semibold text-text-primary">AI Agent</h3>
+          </div>
+
+          <div className="mb-4 flex items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                checked={agentEnabled}
+                onChange={(e) => {
+                  setAgentEnabled(e.target.checked);
+                  setAiSetting("enabled", e.target.checked.toString());
+                }}
+              />
+              Enable AI Agent features
+            </label>
+          </div>
+
+          <p className="mb-3 text-xs text-text-muted">
+            Configure AI models for stock analysis, chat, and autonomous monitoring.
+            Uses <a href="https://github.com/BerriAI/litellm" target="_blank" className="text-neutral hover:underline">LiteLLM</a> for unified access to 100+ models.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {aiFields.map((field) => {
+              const value = getAiSetting(field.key);
+              const isVisible = visible[field.key];
+
+              return (
+                <div key={field.key} className="rounded border border-border bg-surface p-3">
+                  <label className="mb-1 block text-xs font-medium text-text-primary">{field.label}</label>
+                  {field.hint && <p className="mb-1 text-xs text-text-muted">{field.hint}</p>}
+                  <div className="flex gap-2">
+                    <input
+                      type={isVisible ? "text" : "password"}
+                      value={value}
+                      placeholder={field.placeholder}
+                      onChange={(e) => setAiSetting(field.key, e.target.value)}
+                      className="w-full rounded border border-border bg-base px-2 py-2 text-sm text-text-primary focus:border-neutral focus:outline-none"
+                    />
+                    <button
+                      onClick={() => setVisible((prev) => ({ ...prev, [field.key]: !prev[field.key] }))}
+                      className="shrink-0 rounded border border-border px-2 text-text-muted hover:text-text-primary"
+                    >
+                      {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 rounded border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+            <strong>Notice:</strong> AI analysis results are for informational purposes only and do not constitute investment advice. Please make your own investment decisions.
+          </div>
         </section>
       </div>
     </div>

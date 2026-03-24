@@ -17,6 +17,10 @@ export const useQuote = (ticker: string) => {
       return quote;
     },
     refetchInterval: interval,
+    staleTime: Math.max(5_000, Math.floor(interval * 0.8)),
+    gcTime: Math.max(30_000, interval * 3),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     enabled: Boolean(ticker)
   });
 };

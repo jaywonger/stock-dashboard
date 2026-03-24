@@ -22,8 +22,13 @@ const columnLabels: Record<keyof ScreenerRow, string> = {
   sparkline: "5D"
 };
 
-export function ScreenerResults() {
+interface ScreenerResultsProps {
+  onSelectTicker?: (ticker: string) => void;
+}
+
+export function ScreenerResults({ onSelectTicker }: ScreenerResultsProps = {}) {
   const setTicker = useMarketStore((state) => state.setSelectedTicker);
+  const selectTicker = onSelectTicker ?? setTicker;
   const { visibleColumns, sortBy, sortDirection, setSort, results } = useScreenerStore();
   const query = useScreener();
 
@@ -107,7 +112,7 @@ export function ScreenerResults() {
                 <tr
                   key={row.symbol}
                   className="cursor-pointer border-b border-border/70 transition hover:bg-panel"
-                  onClick={() => setTicker(row.symbol)}
+                  onClick={() => selectTicker(row.symbol)}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     alert(`Actions: Add ${row.symbol} to watchlist, set alert, or view news.`);
@@ -127,3 +132,4 @@ export function ScreenerResults() {
     </div>
   );
 }
+

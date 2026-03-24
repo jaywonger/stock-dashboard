@@ -85,6 +85,8 @@ export class FallbackStockDataService implements StockDataProvider {
   id = "mock" as const;
   private providerTimeoutMs = Number(process.env.PROVIDER_TIMEOUT_MS ?? 10_000);
   private providerFailureCooldownMs = Number(process.env.PROVIDER_FAILURE_COOLDOWN_MS ?? 30_000);
+  private quoteCacheTtlMs = Number(process.env.QUOTE_CACHE_TTL_MS ?? 15_000);
+  private ohlcvCacheTtlMs = Number(process.env.OHLCV_CACHE_TTL_MS ?? 60_000);
   private cursorByOperation: Record<"quote" | "ohlcv" | "search" | "marketStatus", number> = {
     quote: 0,
     ohlcv: 0,
@@ -92,6 +94,9 @@ export class FallbackStockDataService implements StockDataProvider {
     marketStatus: 0
   };
   private providerState = new Map<string, { failures: number; coolDownUntil: number }>();
+  private quoteCache = new Map<string, { value: Quote; expiresAt: number }>();
+  private ohlcvCache = new Map<string, { value: OHLCV[]; expiresAt: number }>();
+  private inflight = new Map<string, Promise<unknown>>();
   constructor(private providers: StockDataProvider[]) {}
 
   private withTimeout<T>(providerId: string, promise: Promise<T>): Promise<T> {
@@ -134,13 +139,29 @@ export class FallbackStockDataService implements StockDataProvider {
     this.providerState.set(providerId, { failures, coolDownUntil: Date.now() + penalty });
   }
 
+  private getProviderOrderForSymbol(
+    operation: keyof FallbackStockDataService["cursorByOperation"],
+    ticker?: string
+  ): StockDataProvider[] {
+    const ordered = this.getProviderOrder(operation);
+    if (!ticker) return ordered;
+    const symbol = ticker.toUpperCase();
+    const preferYahoo =
+      ["VIX", "SPX", "GSPC", "NDX", "DJI", "RUT"].includes(symbol) ||
+      symbol.startsWith("^") ||
+      symbol.includes(".");
+    if (!preferYahoo) return ordered;
+    return [...ordered].sort((a, b) => (a.id === "yahoo" ? -1 : b.id === "yahoo" ? 1 : 0));
+  }
+
   private async tryProviders<T>(
     operation: keyof FallbackStockDataService["cursorByOperation"],
     fn: (provider: StockDataProvider) => Promise<T>,
-    shouldAccept?: (result: T) => boolean
+    shouldAccept?: (result: T) => boolean,
+    ticker?: string
   ): Promise<T> {
     let lastError: unknown;
-    for (const provider of this.getProviderOrder(operation)) {
+    for (const provider of this.getProviderOrderForSymbol(operation, ticker)) {
       try {
         const result = await this.withTimeout(provider.id, fn(provider));
         if (shouldAccept && !shouldAccept(result)) {
@@ -158,20 +179,75 @@ export class FallbackStockDataService implements StockDataProvider {
     throw lastError instanceof Error ? lastError : new Error("All providers failed");
   }
 
+  private getCachedQuote(symbol: string): Quote | null {
+    const cached = this.quoteCache.get(symbol);
+    if (!cached) return null;
+    if (cached.expiresAt <= Date.now()) {
+      this.quoteCache.delete(symbol);
+      return null;
+    }
+    return cached.value;
+  }
+
+  private cacheQuote(symbol: string, value: Quote) {
+    this.quoteCache.set(symbol, { value, expiresAt: Date.now() + this.quoteCacheTtlMs });
+  }
+
+  private getCachedOhlcv(key: string): OHLCV[] | null {
+    const cached = this.ohlcvCache.get(key);
+    if (!cached) return null;
+    if (cached.expiresAt <= Date.now()) {
+      this.ohlcvCache.delete(key);
+      return null;
+    }
+    return cached.value;
+  }
+
+  private cacheOhlcv(key: string, value: OHLCV[]) {
+    this.ohlcvCache.set(key, { value, expiresAt: Date.now() + this.ohlcvCacheTtlMs });
+  }
+
+  private async withInflight<T>(key: string, task: () => Promise<T>): Promise<T> {
+    const existing = this.inflight.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+    const promise = task().finally(() => {
+      this.inflight.delete(key);
+    });
+    this.inflight.set(key, promise);
+    return promise;
+  }
+
   async getQuote(ticker: string): Promise<Quote> {
-    return this.tryProviders(
-      "quote",
-      (provider) => provider.getQuote(ticker),
-      (quote) => typeof quote.price === "number" && Number.isFinite(quote.price) && quote.price > 0
-    );
+    const symbol = ticker.toUpperCase();
+    const cached = this.getCachedQuote(symbol);
+    if (cached) return cached;
+    return this.withInflight(`quote:${symbol}`, async () => {
+      const quote = await this.tryProviders(
+        "quote",
+        (provider) => provider.getQuote(symbol),
+        (result) => typeof result.price === "number" && Number.isFinite(result.price) && result.price > 0,
+        symbol
+      );
+      this.cacheQuote(symbol, quote);
+      return quote;
+    });
   }
 
   async getOHLCV(ticker: string, timeframe: Timeframe, from: Date, to: Date): Promise<OHLCV[]> {
-    return this.tryProviders(
-      "ohlcv",
-      (provider) => provider.getOHLCV(ticker, timeframe, from, to),
-      (rows) => Array.isArray(rows) && rows.length > 0
-    );
+    const symbol = ticker.toUpperCase();
+    const cacheKey = `${symbol}:${timeframe}:${Math.floor(from.getTime() / 60_000)}:${Math.floor(to.getTime() / 60_000)}`;
+    const cached = this.getCachedOhlcv(cacheKey);
+    if (cached) return cached;
+    return this.withInflight(`ohlcv:${cacheKey}`, async () => {
+      const rows = await this.tryProviders(
+        "ohlcv",
+        (provider) => provider.getOHLCV(symbol, timeframe, from, to),
+        (result) => Array.isArray(result) && result.length > 0,
+        symbol
+      );
+      this.cacheOhlcv(cacheKey, rows);
+      return rows;
+    });
   }
 
   async search(query: string): Promise<SearchResult[]> {

@@ -176,6 +176,14 @@ export interface ProviderKeys {
   benzingaApiKey?: string;
   fredApiKey?: string;
   rssFeedUrls?: string[];
+  litellmModel?: string;
+  litellmApiKey?: string;
+  litellmBaseUrl?: string;
+  geminiApiKey?: string;
+  claudeApiKey?: string;
+  openaiApiKey?: string;
+  openaiBaseUrl?: string;
+  openaiModel?: string;
 }
 
 export interface RefreshIntervals {
@@ -311,4 +319,96 @@ export interface NewsTeamAnalysisReport {
     confidence: number;
     rationale: string;
   };
+}
+
+// AI Agent Types
+export type Recommendation = "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL";
+export type Trend = "BULLISH" | "BEARISH" | "NEUTRAL";
+export type Momentum = "STRONG_POSITIVE" | "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "STRONG_NEGATIVE";
+export type RSILevel = "OVERBOUGHT" | "BULLISH" | "NEUTRAL" | "BEARISH" | "OVERSOLD";
+
+export interface StockAnalysis {
+  symbol: string;
+  timestamp: string;
+  recommendation: Recommendation;
+  confidence: number;
+  summary: string;
+  entryPrice: { low: number; high: number };
+  targetPrice: number;
+  stopLoss: number;
+  riskRewardRatio: number;
+  technicalAnalysis: {
+    trend: Trend;
+    momentum: Momentum;
+    support: number[];
+    resistance: number[];
+    maAlignment: "BULLISH" | "BEARISH" | "MIXED";
+    rsiLevel: RSILevel;
+  };
+  sentimentAnalysis: {
+    overall: "BULLISH" | "NEUTRAL" | "BEARISH";
+    score: number;
+    recentNewsSummary: string;
+  };
+  checklist: {
+    item: string;
+    status: "Met" | "Caution" | "Not Met";
+    note?: string;
+  }[];
+  risks: string[];
+  catalysts: string[];
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  metadata?: {
+    symbolsMentioned?: string[];
+    suggestedActions?: ChatSuggestedAction[];
+  };
+}
+
+export interface ChatSuggestedAction {
+  type: "view_chart" | "set_alert" | "add_watchlist" | "run_screener";
+  label: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface MonitorAlert {
+  id: string;
+  type: AlertType;
+  symbol: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  title: string;
+  description: string;
+  timestamp: string;
+  data: {
+    price?: number;
+    changePercent?: number;
+    pattern?: string;
+    volumeRatio?: number;
+    sentimentShift?: number;
+  };
+  suggestedAction?: string;
+}
+
+export type AlertType =
+  | "GOLDEN_CROSS"
+  | "DEATH_CROSS"
+  | "BREAKOUT"
+  | "BREAKDOWN"
+  | "VOLUME_SPIKE"
+  | "SENTIMENT_SURGE"
+  | "PRICE_TARGET_BREACH"
+  | "RSI_EXTREME"
+  | "MA_BOUNCE"
+  | "SUPPORT_TEST"
+  | "RESISTANCE_REJECT";
+
+export interface AgentStatus {
+  enabled: boolean;
+  model: string;
+  hasApiKey: boolean;
 }

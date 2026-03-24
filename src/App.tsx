@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Header } from "./components/layout/Header";
 import { RightPanel } from "./components/layout/RightPanel";
-import { WatchlistScreenerPanel } from "./components/dashboard/WatchlistScreenerPanel";
 import { IndicatorControls } from "./components/chart/IndicatorControls";
 import { MainChart } from "./components/chart/MainChart";
 import { SettingsModal } from "./components/shared/SettingsModal";
 import { Toast, type ToastMessage } from "./components/shared/Toast";
-import { CompareView } from "./components/workspace/CompareView";
-import { CarlaSetupView } from "./components/workspace/CarlaSetupView";
-import { LiveMonitorView } from "./components/workspace/LiveMonitorView";
-import { MarketSentimentView } from "./components/workspace/MarketSentimentView";
-import { NewsAnalysisView } from "./components/workspace/NewsAnalysisView";
+import { AgentPanel } from "./components/agents/AgentPanel";
+import { DailyDecisionCard } from "./components/news/DailyDecisionCard";
+import { WatchlistScreenerPanel } from "./components/dashboard/WatchlistScreenerPanel";
 import { WorkspaceTabs, type WorkspaceTabId } from "./components/workspace/WorkspaceTabs";
+import { CarlaSetupView } from "./components/workspace/CarlaSetupView";
+import { NewsAnalysisView } from "./components/workspace/NewsAnalysisView";
+import { MarketSentimentView } from "./components/workspace/MarketSentimentView";
+import { LiveMonitorView } from "./components/workspace/LiveMonitorView";
+import { CompareView } from "./components/workspace/CompareView";
 import { useMarketStore } from "./store/marketStore";
 import { useSettingsStore } from "./store/settingsStore";
 import type { ChartType, Timeframe } from "./types";
@@ -48,11 +50,11 @@ function App() {
   const [activeIndicators, setActiveIndicators] = useState<string[]>(["SMA", "EMA", "VWAP"]);
   const [isRightCollapsed, setIsRightCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [chartHeightPct, setChartHeightPct] = useState(58);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTabId>("dashboard");
   const [mobileTab, setMobileTab] = useState<MobileTab>("main");
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>("dashboard");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
+  const [showAgentPanel, setShowAgentPanel] = useState(false);
 
   const selectedTicker = useMarketStore((state) => state.selectedTicker);
   const compareTicker = useMarketStore((state) => state.compareTicker);
@@ -135,103 +137,124 @@ function App() {
   }, [settings.notificationEnabled, setAlerts]);
 
   return (
-    <div className="min-h-dvh bg-base text-text-primary">
+    <div className="flex h-dvh flex-col bg-base text-text-primary">
       <Header
         onOpenSettings={() => setSettingsOpen(true)}
-        onToggleLeft={() => undefined}
+        onToggleLeft={() => {}}
         onToggleRight={() => setIsRightCollapsed((value) => !value)}
+        onToggleAgentPanel={() => setShowAgentPanel((value) => !value)}
       />
-      <WorkspaceTabs activeTab={workspaceTab} onChange={setWorkspaceTab} />
 
       {showSetupBanner && (
         <div className="border-b border-warning/35 bg-warning/10 px-4 py-2 text-sm text-warning">
           Running in zero-config mode with mock market data. Add API keys in Settings for live feeds.
         </div>
       )}
+      <WorkspaceTabs activeTab={activeWorkspaceTab} onChange={setActiveWorkspaceTab} />
 
-      <main className="flex h-[calc(100dvh-112px)]">
-        {workspaceTab === "dashboard" ? (
-          <>
-            <section className="min-w-0 flex-1 p-3">
-              <PanelErrorBoundary title="Chart Panel">
-                <IndicatorControls
-                  ticker={selectedTicker}
-                  timeframe={timeframe}
-                  chartType={chartType}
-                  activeIndicators={activeIndicators}
-                  onTickerChange={(ticker) => useMarketStore.getState().setSelectedTicker(ticker)}
-                  onTimeframeChange={setTimeframe}
-                  onChartTypeChange={setChartType}
-                  onIndicatorsChange={setActiveIndicators}
-                  onCompare={setCompareTicker}
-                />
-                <div className="flex h-[calc(100%-52px)] flex-col gap-2">
-                  <div style={{ height: `${chartHeightPct}%` }}>
-                    <MainChart
-                      ticker={selectedTicker}
-                      timeframe={timeframe}
-                      chartType={chartType}
-                      compareTicker={compareTicker}
-                      activeIndicators={activeIndicators}
-                    />
-                  </div>
-                  <div className="px-1">
-                    <input
-                      type="range"
-                      min={35}
-                      max={75}
-                      value={chartHeightPct}
-                      onChange={(event) => setChartHeightPct(Number(event.target.value))}
-                      className="w-full"
-                      aria-label="Resize chart and screener split"
-                    />
-                  </div>
-                  <div style={{ height: `${100 - chartHeightPct}%` }}>
-                    <PanelErrorBoundary title="Screener Panel">
-                      <WatchlistScreenerPanel />
-                    </PanelErrorBoundary>
+      <main className="flex min-h-0 flex-1">
+        <section className="min-w-0 flex-1 p-3">
+          {activeWorkspaceTab === "dashboard" && (
+            <PanelErrorBoundary title="Dashboard Workspace">
+              <IndicatorControls
+                ticker={selectedTicker}
+                timeframe={timeframe}
+                chartType={chartType}
+                activeIndicators={activeIndicators}
+                onTickerChange={(ticker) => useMarketStore.getState().setSelectedTicker(ticker)}
+                onTimeframeChange={setTimeframe}
+                onChartTypeChange={setChartType}
+                onIndicatorsChange={setActiveIndicators}
+                onCompare={setCompareTicker}
+              />
+              <div className="flex h-[calc(100%-52px)] flex-col gap-3">
+                <div className="grid min-h-0 flex-[1.1] gap-3 xl:grid-cols-[1.6fr_0.9fr]">
+                  <MainChart
+                    ticker={selectedTicker}
+                    timeframe={timeframe}
+                    chartType={chartType}
+                    compareTicker={compareTicker}
+                    activeIndicators={activeIndicators}
+                  />
+                  <div className="min-h-0 overflow-y-auto">
+                    <DailyDecisionCard ticker={selectedTicker} timeframe={timeframe} />
                   </div>
                 </div>
-              </PanelErrorBoundary>
-            </section>
-            {!isMobile && <RightPanel collapsed={isRightCollapsed} ticker={selectedTicker} timeframe={timeframe} />}
-          </>
-        ) : workspaceTab === "news-analysis" ? (
-          <div className="min-w-0 flex-1">
-            <NewsAnalysisView ticker={selectedTicker} timeframe={timeframe} />
+                <div className="min-h-0 flex-1">
+                  <WatchlistScreenerPanel />
+                </div>
+              </div>
+            </PanelErrorBoundary>
+          )}
+
+          {activeWorkspaceTab === "carla-setup" && (
+            <PanelErrorBoundary title="Carla Setup">
+              <CarlaSetupView />
+            </PanelErrorBoundary>
+          )}
+
+          {activeWorkspaceTab === "news-analysis" && (
+            <PanelErrorBoundary title="News Analysis">
+              <NewsAnalysisView ticker={selectedTicker} timeframe={timeframe} />
+            </PanelErrorBoundary>
+          )}
+
+          {activeWorkspaceTab === "market-sentiment" && (
+            <PanelErrorBoundary title="Market Sentiment">
+              <MarketSentimentView />
+            </PanelErrorBoundary>
+          )}
+
+          {activeWorkspaceTab === "live-monitor" && (
+            <PanelErrorBoundary title="Live Monitor">
+              <LiveMonitorView ticker={selectedTicker} compareTicker={compareTicker} />
+            </PanelErrorBoundary>
+          )}
+
+          {activeWorkspaceTab === "compare" && (
+            <PanelErrorBoundary title="Compare">
+              <CompareView
+                primaryTicker={selectedTicker}
+                compareTicker={compareTicker}
+                timeframe={timeframe}
+                onCompareChange={setCompareTicker}
+              />
+            </PanelErrorBoundary>
+          )}
+        </section>
+
+        {!isMobile && activeWorkspaceTab === "dashboard" && <RightPanel collapsed={isRightCollapsed} />}
+
+      {/* AI Agent Panel Drawer */}
+      {showAgentPanel && !isMobile && (
+        <div className="fixed right-0 top-[65px] z-30 w-[380px] border-l border-border bg-base shadow-xl">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🤖</span>
+              <h3 className="font-semibold text-text-primary">AI Smart Analysis</h3>
+            </div>
+            <button
+              onClick={() => setShowAgentPanel(false)}
+              className="rounded border border-border px-2 py-1 text-xs text-text-muted hover:text-text-primary"
+            >
+              Close
+            </button>
           </div>
-        ) : workspaceTab === "carla-setup" ? (
-          <div className="min-w-0 flex-1">
-            <CarlaSetupView />
+          <div className="h-[calc(100dvh-113px)] overflow-y-auto p-4">
+            <AgentPanel symbol={selectedTicker} timeframe={timeframe} />
           </div>
-        ) : workspaceTab === "market-sentiment" ? (
-          <div className="min-w-0 flex-1">
-            <MarketSentimentView />
-          </div>
-        ) : workspaceTab === "live-monitor" ? (
-          <div className="min-w-0 flex-1">
-            <LiveMonitorView ticker={selectedTicker} compareTicker={compareTicker} />
-          </div>
-        ) : (
-          <div className="min-w-0 flex-1">
-            <CompareView
-              primaryTicker={selectedTicker}
-              compareTicker={compareTicker}
-              timeframe={timeframe}
-              onCompareChange={setCompareTicker}
-            />
-          </div>
-        )}
+        </div>
+      )}
       </main>
 
-      {isMobile && workspaceTab === "dashboard" && (
+      {isMobile && (
         <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-base px-3 py-2">
           <div className="grid grid-cols-3 gap-2 text-xs">
             <button
               className={`rounded border px-2 py-1 ${mobileTab === "left" ? "border-neutral text-neutral" : "border-border text-text-muted"}`}
               onClick={() => setMobileTab("left")}
             >
-              Lists + Scan
+              Watchlists
             </button>
             <button
               className={`rounded border px-2 py-1 ${mobileTab === "main" ? "border-neutral text-neutral" : "border-border text-text-muted"}`}
@@ -257,9 +280,11 @@ function App() {
                   compareTicker={compareTicker}
                   activeIndicators={activeIndicators}
                 />
+                <DailyDecisionCard ticker={selectedTicker} timeframe={timeframe} />
+                <WatchlistScreenerPanel />
               </div>
             )}
-            {mobileTab === "right" && <RightPanel collapsed={false} ticker={selectedTicker} timeframe={timeframe} />}
+            {mobileTab === "right" && <RightPanel collapsed={false} />}
           </div>
         </nav>
       )}

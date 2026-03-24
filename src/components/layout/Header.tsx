@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, ChevronLeftSquare, ChevronRightSquare, Globe2, Settings } from "lucide-react";
+import { Bell, ChevronLeftSquare, ChevronRightSquare, Settings, Bot } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useQuote } from "../../hooks/useQuote";
 import { formatPrice } from "../../lib/formatters";
@@ -14,6 +14,7 @@ interface HeaderProps {
   onOpenSettings: () => void;
   onToggleLeft: () => void;
   onToggleRight: () => void;
+  onToggleAgentPanel?: () => void;
 }
 
 function GlobalTickerTile({ symbol }: { symbol: string }) {
@@ -34,7 +35,7 @@ function GlobalTickerTile({ symbol }: { symbol: string }) {
   );
 }
 
-export function Header({ onOpenSettings, onToggleLeft, onToggleRight }: HeaderProps) {
+export function Header({ onOpenSettings, onToggleLeft, onToggleRight, onToggleAgentPanel }: HeaderProps) {
   const [clock, setClock] = useState(() => new Date());
   const alerts = useMarketStore((state) => state.alerts);
 
@@ -54,23 +55,15 @@ export function Header({ onOpenSettings, onToggleLeft, onToggleRight }: HeaderPr
     [alerts]
   );
 
-  const session = marketStatus.data?.session ?? "CLOSED";
-
   return (
-    <header className="sticky top-0 z-40 border-b border-border/80 bg-[#070c14]/90 px-3 py-2 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-border bg-base/95 px-3 py-2 backdrop-blur-md">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <button className="rounded border border-border p-1.5 text-text-muted hover:text-text-primary" onClick={onToggleLeft}>
             <ChevronLeftSquare size={16} />
           </button>
-          <div className="rounded-md border border-border bg-[#0f1522] px-3 py-2 text-text-primary">
-            <div className="flex items-center gap-2">
-              <Globe2 size={15} className="text-neutral" />
-              <div>
-                <div className="text-sm font-semibold tracking-wide">World Monitor</div>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-text-subtle">Real-Time Intelligence</div>
-              </div>
-            </div>
+          <div className="rounded-md border border-border bg-surface px-3 py-2 font-semibold tracking-wide text-text-primary">
+            Stock Intel
           </div>
         </div>
 
@@ -81,10 +74,10 @@ export function Header({ onOpenSettings, onToggleLeft, onToggleRight }: HeaderPr
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="rounded-md border border-border bg-[#0f1522] px-3 py-1.5 text-right">
+          <div className="rounded-md border border-border bg-surface px-3 py-1.5 text-right">
             <div className="ticker-font text-xs text-text-muted">{clock.toLocaleTimeString()}</div>
             <div className="text-xs font-medium text-text-primary">
-              Session: <span className={`ticker-font ${session === "OPEN" ? "text-bullish" : "text-text-primary"}`}>{session}</span>
+              Session: <span className="ticker-font">{marketStatus.data?.session ?? "CLOSED"}</span>
             </div>
           </div>
           <button className="relative rounded border border-border p-2 text-text-muted hover:text-text-primary">
@@ -95,8 +88,15 @@ export function Header({ onOpenSettings, onToggleLeft, onToggleRight }: HeaderPr
               </span>
             )}
           </button>
-          <button className="rounded border border-border p-2 text-text-muted hover:text-text-primary" onClick={onToggleRight}>
+          <button className="relative rounded border border-border p-2 text-text-muted hover:text-text-primary" onClick={onToggleRight}>
             <ChevronRightSquare size={16} />
+          </button>
+          <button
+            className="rounded border border-border p-2 text-text-muted hover:text-bullish"
+            onClick={onToggleAgentPanel}
+            title="AI Analysis"
+          >
+            <Bot size={16} />
           </button>
           <button className="rounded border border-border p-2 text-text-muted hover:text-text-primary" onClick={onOpenSettings}>
             <Settings size={16} />

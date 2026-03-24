@@ -24,5 +24,9 @@ export const useOHLCV = (ticker: string, timeframe: Timeframe) =>
       from.setDate(to.getDate() - rangeByTimeframe[timeframe]);
       return stockService.getOHLCV(ticker, timeframe, from, to);
     },
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     enabled: Boolean(ticker)
   });

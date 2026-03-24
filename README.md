@@ -21,6 +21,10 @@ Full-stack stock intelligence dashboard built with React + TypeScript + Express 
 - Alerts engine with browser notifications + API polling
 - Settings modal (API keys, refresh intervals, notifications)
 - Zero-config startup mode with mock data fallback
+- **AI Agents** (NEW):
+  - 🤖 **Stock Analysis Agent**: AI-powered stock analysis with entry/stop/target prices, technical analysis, and risk assessment
+  - 💬 **Conversational Chat Agent**: Natural language Q&A about stocks, market conditions, and comparisons
+  - 🔔 **Autonomous Monitor Agent**: Real-time monitoring for technical patterns (golden/death cross), volume spikes, and sentiment shifts
 
 ## Project Structure
 
@@ -81,6 +85,18 @@ Optional (dashboard still works with mock fallback):
 - `BENZINGA_API_KEY`
 - `RSS_FEED_URLS`
 
+### AI Agent API Keys (Optional)
+
+For AI-powered features (stock analysis, chat, monitoring):
+
+- `LITELLM_MODEL` – LiteLLM model name (e.g., `gemini/gemini-2.0-flash`)
+- `LITELLM_API_KEY` – LiteLLM API key
+- `GEMINI_API_KEY` – Google AI Studio key (alternative)
+- `OPENAI_API_KEY` – OpenAI or compatible API key
+- `CLAUDE_API_KEY` – Anthropic Claude API key
+
+Configure in Settings modal or `.env` file.
+
 ## Data Layer Notes
 
 - Unified provider interface is defined in [`src/types/index.ts`](./src/types/index.ts).
@@ -120,3 +136,43 @@ Optional (dashboard still works with mock fallback):
 - API keys in Settings are stored client-side via Zustand persist (`localStorage`).
 - Server env keys are used by backend routes for reliable provider access/proxying.
 - If all external providers fail, mock data still keeps dashboard interactive.
+
+## AI Agent Features
+
+### Stock Analysis Agent
+
+Click the 🤖 AI button in the header to open the analysis panel for the currently selected stock.
+
+**Features:**
+- Investment recommendation (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL)
+- Confidence score (0-100%)
+- Entry price range, target price, stop loss
+- Risk/reward ratio
+- Technical analysis (trend, momentum, MA alignment, RSI)
+- Sentiment analysis from recent news
+- Action checklist with status indicators
+- Risk factors and catalysts
+
+### Conversational Chat Agent
+
+Click the "AI 问答" tab in the right panel to open the chat interface.
+
+**Example questions:**
+- "NVDA 现在值得买入吗？"
+- "比较 AAPL 和 MSFT"
+- "RSI 指标怎么用？"
+- "当前美股市场怎么看？"
+
+### Autonomous Monitor Agent
+
+Click the "监控" tab in the right panel to view real-time alerts.
+
+**Monitors for:**
+- Golden Cross / Death Cross
+- Breakout / Breakdown patterns
+- Volume spikes (>3x average)
+- RSI extremes (overbought/oversold)
+- Moving average bounces
+- Sentiment shifts from news
+
+Alerts are prioritized by severity (LOW/MEDIUM/HIGH/CRITICAL).

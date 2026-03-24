@@ -7,6 +7,7 @@ interface SettingsActions {
   setProviderPriority: (priority: StockProviderId[]) => void;
   setRefreshInterval: (key: keyof SettingsState["refreshIntervals"], value: number) => void;
   setNotificationEnabled: (enabled: boolean) => void;
+  setAiApiKey: (key: keyof SettingsState["keys"], value: string) => void;
 }
 
 const defaultSettings: SettingsState = {
@@ -39,8 +40,16 @@ const defaultSettings: SettingsState = {
     finnhubApiKey: "",
     newsApiKey: "",
     benzingaApiKey: "",
-    fredApiKey: "",
-    rssFeedUrls: []
+    rssFeedUrls: [],
+    // AI Agent keys
+    litellmModel: "",
+    litellmApiKey: "",
+    litellmBaseUrl: "",
+    geminiApiKey: "",
+    claudeApiKey: "",
+    openaiApiKey: "",
+    openaiBaseUrl: "",
+    openaiModel: ""
   }
 };
 
@@ -66,7 +75,14 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
             [key]: value
           }
         })),
-      setNotificationEnabled: (enabled) => set({ notificationEnabled: enabled })
+      setNotificationEnabled: (enabled) => set({ notificationEnabled: enabled }),
+      setAiApiKey: (key, value) =>
+        set((state) => ({
+          keys: {
+            ...state.keys,
+            [key]: value
+          }
+        }))
     }),
     {
       name: "stocks-dashboard-settings"
