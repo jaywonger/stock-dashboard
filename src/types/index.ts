@@ -282,3 +282,33 @@ export interface DailyDecisionDashboard {
   aiCommentary?: string;
   aiProvider?: string;
 }
+
+export type AnalystRole = "market-analyst" | "sentiment-analyst" | "news-analyst" | "fundamentals-analyst";
+export type AnalystStance = "bullish" | "neutral" | "bearish";
+
+export interface AnalystView {
+  role: AnalystRole;
+  stance: AnalystStance;
+  confidence: number;
+  reasoning: string;
+}
+
+export interface DebateRound {
+  round: number;
+  summary: string;
+  analysts: AnalystView[];
+}
+
+export interface NewsTeamAnalysisReport {
+  ticker: string;
+  timeframe: Timeframe;
+  analysisDate: string;
+  rounds: number;
+  team: AnalystView[];
+  debate: DebateRound[];
+  finalVerdict: {
+    stance: AnalystStance;
+    confidence: number;
+    rationale: string;
+  };
+}

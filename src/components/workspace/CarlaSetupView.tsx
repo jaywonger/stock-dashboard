@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BasicScreenerFilters, ScreenerConfig } from "../../types";
 import { useScreener } from "../../hooks/useScreener";
+import { useNewsTeamAnalysis } from "../../hooks/useNewsTeamAnalysis";
+import { useMarketStore } from "../../store/marketStore";
 import { useScreenerStore } from "../../store/screenerStore";
+import { DailyDecisionCard } from "../news/DailyDecisionCard";
+import { TeamDebateCard } from "../news/TeamDebateCard";
 import { ScreenerResults } from "../screener/ScreenerResults";
 
 type CarlaPresetId = "best-buy" | "higher-growth" | "commodities";
@@ -188,11 +192,22 @@ export function CarlaSetupView() {
   const [exchange, setExchange] = useState<BasicScreenerFilters["exchange"]>("NYSE");
   const [mode, setMode] = useState<FilterMode>("auto");
   const [autoRelaxed, setAutoRelaxed] = useState(false);
+  const [analysisTickerInput, setAnalysisTickerInput] = useState("SPY");
+  const [analysisTicker, setAnalysisTicker] = useState("SPY");
+  const [analysisDate, setAnalysisDate] = useState(new Date().toISOString().slice(0, 10));
+  const [debateRounds, setDebateRounds] = useState(3);
   const setConfig = useScreenerStore((state) => state.setConfig);
+  const selectedTicker = useMarketStore((state) => state.selectedTicker);
   const preset = useMemo(() => presets.find((item) => item.id === active) ?? presets[0], [active]);
   const screenerQuery = useScreener();
+  const teamQuery = useNewsTeamAnalysis(analysisTicker, "1D", analysisDate, debateRounds);
   const rows = screenerQuery.data ?? [];
   const effectiveRelaxed = mode === "relaxed" || (mode === "auto" && autoRelaxed);
+
+  useEffect(() => {
+    setAnalysisTickerInput(selectedTicker);
+    setAnalysisTicker(selectedTicker);
+  }, [selectedTicker]);
 
   useEffect(() => {
     setAutoRelaxed(false);
@@ -276,8 +291,52 @@ export function CarlaSetupView() {
         </div>
       </div>
 
-      <div className="card h-[calc(100%-112px)] min-h-[360px] overflow-hidden border border-border bg-panel">
-        <ScreenerResults />
+      <div className="grid h-[calc(100%-112px)] min-h-[360px] gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="card min-h-0 overflow-hidden border border-border bg-panel">
+          <ScreenerResults />
+        </div>
+        <div className="card min-h-0 overflow-y-auto border border-border bg-panel p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h3 className="intel-title">Stock Analysis</h3>
+            <span className="intel-chip ticker-font">{analysisTicker}</span>
+            <span className="intel-chip">Timeframe 1D</span>
+          </div>
+          <div className="mb-3 grid gap-2 md:grid-cols-[120px_1fr]">
+            <input
+              value={analysisTickerInput}
+              onChange={(event) => setAnalysisTickerInput(event.target.value.toUpperCase())}
+              className="rounded border border-border bg-base px-2 py-1.5 text-sm text-text-primary ticker-font"
+              placeholder="Ticker"
+            />
+            <button
+              onClick={() => setAnalysisTicker(analysisTickerInput.trim().toUpperCase() || selectedTicker)}
+              className="rounded border border-border bg-surface px-3 py-1.5 text-xs text-text-primary hover:border-neutral"
+            >
+              Analyze Ticker
+            </button>
+            <input
+              type="date"
+              value={analysisDate}
+              onChange={(event) => setAnalysisDate(event.target.value)}
+              className="rounded border border-border bg-base px-2 py-1.5 text-sm text-text-primary"
+            />
+            <label className="rounded border border-border bg-base px-2 py-1 text-xs text-text-muted">
+              Debate rounds: {debateRounds}
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={1}
+                value={debateRounds}
+                onChange={(event) => setDebateRounds(Number(event.target.value))}
+                className="mt-1 w-full"
+              />
+            </label>
+          </div>
+
+          <DailyDecisionCard ticker={analysisTicker} timeframe="1D" />
+          <TeamDebateCard isLoading={teamQuery.isLoading} isError={teamQuery.isError} data={teamQuery.data} />
+        </div>
       </div>
     </section>
   );

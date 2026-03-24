@@ -136,12 +136,18 @@ export class FallbackStockDataService implements StockDataProvider {
 
   private async tryProviders<T>(
     operation: keyof FallbackStockDataService["cursorByOperation"],
-    fn: (provider: StockDataProvider) => Promise<T>
+    fn: (provider: StockDataProvider) => Promise<T>,
+    shouldAccept?: (result: T) => boolean
   ): Promise<T> {
     let lastError: unknown;
     for (const provider of this.getProviderOrder(operation)) {
       try {
         const result = await this.withTimeout(provider.id, fn(provider));
+        if (shouldAccept && !shouldAccept(result)) {
+          this.markProviderResult(provider.id, false);
+          lastError = new Error(`${provider.id} returned unusable result`);
+          continue;
+        }
         this.markProviderResult(provider.id, true);
         return result;
       } catch (error) {
@@ -153,11 +159,19 @@ export class FallbackStockDataService implements StockDataProvider {
   }
 
   async getQuote(ticker: string): Promise<Quote> {
-    return this.tryProviders("quote", (provider) => provider.getQuote(ticker));
+    return this.tryProviders(
+      "quote",
+      (provider) => provider.getQuote(ticker),
+      (quote) => typeof quote.price === "number" && Number.isFinite(quote.price) && quote.price > 0
+    );
   }
 
   async getOHLCV(ticker: string, timeframe: Timeframe, from: Date, to: Date): Promise<OHLCV[]> {
-    return this.tryProviders("ohlcv", (provider) => provider.getOHLCV(ticker, timeframe, from, to));
+    return this.tryProviders(
+      "ohlcv",
+      (provider) => provider.getOHLCV(ticker, timeframe, from, to),
+      (rows) => Array.isArray(rows) && rows.length > 0
+    );
   }
 
   async search(query: string): Promise<SearchResult[]> {

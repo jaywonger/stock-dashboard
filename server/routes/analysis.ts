@@ -2,7 +2,16 @@ import { Router } from "express";
 import { calculateATR, calculateMACD, calculateRSI, calculateSMA, latestSeriesValue } from "../../src/lib/indicators";
 import { aggregateNews } from "../../src/services/newsAggregator";
 import { database } from "../db/database";
-import type { DailyDecisionDashboard, OHLCV, StockDataProvider, Timeframe } from "../../src/types";
+import type {
+  AnalystStance,
+  AnalystView,
+  DailyDecisionDashboard,
+  NewsArticle,
+  NewsTeamAnalysisReport,
+  OHLCV,
+  StockDataProvider,
+  Timeframe
+} from "../../src/types";
 
 interface AnalysisRouteConfig {
   alphaVantageApiKey?: string;
@@ -44,6 +53,14 @@ const REPORT_SYSTEM_PROMPT =
   "You are a disciplined equity analyst. Produce concise, practical commentary for a dashboard card. No markdown.";
 
 type SupportedLlmProvider = "openai" | "gemini" | "anthropic" | "ollama";
+const stanceToNumber = (stance: AnalystStance): number => (stance === "bullish" ? 1 : stance === "bearish" ? -1 : 0);
+const numberToStance = (value: number): AnalystStance => (value > 0.2 ? "bullish" : value < -0.2 ? "bearish" : "neutral");
+const parseAnalysisDate = (value: string | undefined): string => {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
+};
 
 const buildDecision = (ticker: string, timeframe: Timeframe, bars: OHLCV[], sentimentScore: number, articleCount: number): DailyDecisionDashboard => {
   const latest = bars[bars.length - 1];
@@ -184,6 +201,116 @@ const buildFallbackCommentary = (report: DailyDecisionDashboard): string => {
         : `Wait for confirmation around ${report.levels.entryMin}-${report.levels.entryMax} before increasing directional exposure.`;
 
   return `${report.conclusion} ${riskWarning} ${executionTip}`;
+};
+
+const buildTeamViews = (ticker: string, bars: OHLCV[], articles: NewsArticle[], newsScore: number): AnalystView[] => {
+  const latest = bars.at(-1);
+  const sma20 = latestSeriesValue(calculateSMA(bars, 20));
+  const sma50 = latestSeriesValue(calculateSMA(bars, 50));
+  const rsi14 = latestSeriesValue(calculateRSI(bars, 14)) ?? 50;
+  const macd = calculateMACD(bars).at(-1)?.histogram ?? 0;
+  const bullishCount = articles.filter((item) => item.sentimentLabel === "bullish").length;
+  const bearishCount = articles.filter((item) => item.sentimentLabel === "bearish").length;
+  const sourceCount = new Set(articles.map((item) => item.source)).size;
+
+  const marketBiasRaw =
+    (latest && sma20 && latest.close > sma20 ? 0.45 : -0.25) +
+    (sma20 && sma50 && sma20 > sma50 ? 0.35 : -0.2) +
+    (macd >= 0 ? 0.2 : -0.2) +
+    (rsi14 > 68 ? -0.15 : rsi14 < 35 ? 0.15 : 0);
+  const marketStance = numberToStance(marketBiasRaw);
+  const marketConfidence = clamp(Math.round(56 + Math.abs(marketBiasRaw) * 26), 50, 92);
+
+  const sentimentRaw = (newsScore - 50) / 50;
+  const sentimentStance = numberToStance(sentimentRaw);
+  const sentimentConfidence = clamp(
+    Math.round(52 + Math.abs(sentimentRaw) * 34 + Math.min(articles.length, 20) * 0.8),
+    50,
+    94
+  );
+
+  const negativeHeadlineHits = articles.filter((item) =>
+    /(downgrade|miss|lawsuit|investigation|cuts|tariff|risk|slowdown|warn)/i.test(`${item.headline} ${item.summary ?? ""}`)
+  ).length;
+  const positiveHeadlineHits = articles.filter((item) =>
+    /(upgrade|beats|growth|buyback|rebound|guidance|record|strong)/i.test(`${item.headline} ${item.summary ?? ""}`)
+  ).length;
+  const newsRaw = clamp((positiveHeadlineHits - negativeHeadlineHits) / Math.max(articles.length, 1), -1, 1);
+  const newsStance = numberToStance(newsRaw);
+  const newsConfidence = clamp(Math.round(50 + Math.abs(newsRaw) * 30 + sourceCount * 3), 50, 90);
+
+  const fundamentalsHits = articles.reduce(
+    (acc, item) => {
+      const text = `${item.headline} ${item.summary ?? ""}`;
+      if (/(earnings beat|eps beat|margin expansion|guidance raised|revenue growth)/i.test(text)) acc.pos += 1;
+      if (/(earnings miss|guidance cut|margin pressure|debt|downgrade|cash burn)/i.test(text)) acc.neg += 1;
+      return acc;
+    },
+    { pos: 0, neg: 0 }
+  );
+  const fundamentalsRaw = clamp((fundamentalsHits.pos - fundamentalsHits.neg) / Math.max(articles.length, 1), -1, 1);
+  const fundamentalsStance = numberToStance(fundamentalsRaw);
+  const fundamentalsConfidence = clamp(Math.round(50 + Math.abs(fundamentalsRaw) * 26 + Math.min(articles.length, 15)), 50, 88);
+
+  return [
+    {
+      role: "market-analyst",
+      stance: marketStance,
+      confidence: marketConfidence,
+      reasoning: `${ticker} trend check: MA20/MA50 structure, RSI (${rsi14.toFixed(1)}), and MACD histogram (${
+        macd >= 0 ? "+" : ""
+      }${macd.toFixed(3)}) shape directional bias.`
+    },
+    {
+      role: "sentiment-analyst",
+      stance: sentimentStance,
+      confidence: sentimentConfidence,
+      reasoning: `Aggregate sentiment is ${Math.round(newsScore)}/100 with ${bullishCount} bullish vs ${bearishCount} bearish articles in scope.`
+    },
+    {
+      role: "news-analyst",
+      stance: newsStance,
+      confidence: newsConfidence,
+      reasoning: `Headline flow across ${sourceCount} sources shows ${positiveHeadlineHits} constructive vs ${negativeHeadlineHits} risk-off catalysts.`
+    },
+    {
+      role: "fundamentals-analyst",
+      stance: fundamentalsStance,
+      confidence: fundamentalsConfidence,
+      reasoning: `Fundamental cues in news mention ${fundamentalsHits.pos} positive vs ${fundamentalsHits.neg} negative earnings/quality signals.`
+    }
+  ];
+};
+
+const runDebate = (team: AnalystView[], rounds: number): NewsTeamAnalysisReport["debate"] => {
+  let working = team.map((item) => ({ ...item, score: stanceToNumber(item.stance) }));
+  const debate: NewsTeamAnalysisReport["debate"] = [];
+
+  for (let round = 1; round <= rounds; round += 1) {
+    const avgScore = working.reduce((sum, item) => sum + item.score, 0) / Math.max(working.length, 1);
+    working = working.map((item) => {
+      const pull = (avgScore - item.score) * 0.22;
+      const confidenceDrag = Math.max(0.1, (95 - item.confidence) / 100);
+      const score = clamp(item.score + pull * confidenceDrag, -1, 1);
+      const confidence = clamp(Math.round(item.confidence + (Math.abs(avgScore) > 0.25 ? 2 : 1)), 50, 95);
+      return { ...item, score, confidence };
+    });
+    const bullVotes = working.filter((item) => item.score > 0.2).length;
+    const bearVotes = working.filter((item) => item.score < -0.2).length;
+    const neutralVotes = working.length - bullVotes - bearVotes;
+    debate.push({
+      round,
+      summary: `Round ${round}: team alignment moved toward ${numberToStance(avgScore)} (bull ${bullVotes}, neutral ${neutralVotes}, bear ${bearVotes}).`,
+      analysts: working.map((item) => ({
+        role: item.role,
+        stance: numberToStance(item.score),
+        confidence: item.confidence,
+        reasoning: item.reasoning
+      }))
+    });
+  }
+
+  return debate;
 };
 
 const callOpenAiCompatible = async ({
@@ -445,6 +572,85 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
       res.json(report);
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Daily analysis failed" });
+    }
+  });
+
+  router.get("/news-team", async (req, res) => {
+    try {
+      const ticker = String(req.query.ticker ?? "").toUpperCase();
+      if (!ticker) return res.status(400).json({ error: "ticker is required" });
+      const timeframe = String(req.query.timeframe ?? "1D") as Timeframe;
+      const rounds = clamp(Number(req.query.rounds ?? 3), 1, 5);
+      const analysisDate = parseAnalysisDate(req.query.analysisDate ? String(req.query.analysisDate) : undefined);
+      const windowEnd = new Date(`${analysisDate}T23:59:59.999Z`);
+      const windowStart = new Date(windowEnd);
+      windowStart.setDate(windowEnd.getDate() - 7);
+
+      const to = new Date();
+      const from = new Date();
+      from.setDate(to.getDate() - (dayRangeByTimeframe[timeframe] ?? 365));
+      const bars = await stockService.getOHLCV(ticker, timeframe, from, to);
+      if (!bars.length) return res.status(400).json({ error: "No OHLCV data available for selected ticker/timeframe" });
+
+      const news = await aggregateNews(
+        {
+          alphaVantageApiKey: config.alphaVantageApiKey,
+          polygonApiKey: config.polygonApiKey,
+          newsApiKey: config.newsApiKey,
+          finnhubApiKey: config.finnhubApiKey,
+          benzingaApiKey: config.benzingaApiKey,
+          rssFeedUrls: config.rssFeedUrls,
+          redditClientId: config.redditClientId,
+          redditClientSecret: config.redditClientSecret,
+          redditUserAgent: config.redditUserAgent,
+          redditSubreddits: config.redditSubreddits
+        },
+        ticker
+      );
+
+      const filteredArticles = news.articles.filter((item) => {
+        const ts = new Date(item.publishedAt).getTime();
+        return ts >= windowStart.getTime() && ts <= windowEnd.getTime();
+      });
+      const effectiveArticles = filteredArticles.length > 0 ? filteredArticles : news.articles.slice(0, 40);
+      const sentimentScore =
+        effectiveArticles.length > 0
+          ? Math.round(
+              ((effectiveArticles.reduce((sum, item) => sum + item.sentimentScore, 0) / effectiveArticles.length + 1) / 2) *
+                100
+            )
+          : 50;
+
+      const team = buildTeamViews(ticker, bars, effectiveArticles, sentimentScore);
+      const debate = runDebate(team, rounds);
+      const finalAverage =
+        debate.length > 0
+          ? debate[debate.length - 1].analysts.reduce((sum, item) => sum + stanceToNumber(item.stance), 0) /
+            debate[debate.length - 1].analysts.length
+          : team.reduce((sum, item) => sum + stanceToNumber(item.stance), 0) / Math.max(team.length, 1);
+      const finalStance = numberToStance(finalAverage);
+      const finalConfidence = clamp(
+        Math.round((debate.at(-1)?.analysts.reduce((sum, item) => sum + item.confidence, 0) ?? 0) / Math.max(team.length, 1)),
+        50,
+        95
+      );
+
+      const report: NewsTeamAnalysisReport = {
+        ticker,
+        timeframe,
+        analysisDate,
+        rounds,
+        team,
+        debate,
+        finalVerdict: {
+          stance: finalStance,
+          confidence: finalConfidence,
+          rationale: `Final consensus after ${rounds} round${rounds > 1 ? "s" : ""} leans ${finalStance} based on price structure, sentiment flow, headline balance, and fundamentals cues from the selected news window.`
+        }
+      };
+      res.json(report);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "News team analysis failed" });
     }
   });
 

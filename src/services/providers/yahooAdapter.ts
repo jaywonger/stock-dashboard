@@ -24,9 +24,22 @@ const rangeByTimeframe: Record<Timeframe, string> = {
 
 export class YahooAdapter implements StockDataProvider {
   id = "yahoo" as const;
+  private indexAliases: Record<string, string> = {
+    VIX: "^VIX",
+    SPX: "^GSPC",
+    GSPC: "^GSPC",
+    NDX: "^NDX",
+    DJI: "^DJI",
+    RUT: "^RUT"
+  };
+
+  private normalizeSymbol(ticker: string): string {
+    const upper = ticker.toUpperCase();
+    return this.indexAliases[upper] ?? upper;
+  }
 
   private async chartPayload(ticker: string, timeframe: Timeframe) {
-    const symbol = ticker.toUpperCase();
+    const symbol = this.normalizeSymbol(ticker);
     const interval = intervalByTimeframe[timeframe];
     const range = rangeByTimeframe[timeframe];
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;
@@ -63,8 +76,9 @@ export class YahooAdapter implements StockDataProvider {
     const prev = result.meta.previousClose ?? price;
     const change = price - prev;
     const changePercent = prev === 0 ? 0 : (change / prev) * 100;
+    const symbol = this.normalizeSymbol(ticker);
     return {
-      symbol: ticker.toUpperCase(),
+      symbol,
       companyName: result.meta.longName ?? ticker.toUpperCase(),
       price,
       change,
