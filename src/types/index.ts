@@ -184,6 +184,9 @@ export interface ProviderKeys {
   openaiApiKey?: string;
   openaiBaseUrl?: string;
   openaiModel?: string;
+  openrouterApiKey?: string;
+  openrouterBaseUrl?: string;
+  openrouterModel?: string;
 }
 
 export interface RefreshIntervals {
@@ -286,6 +289,14 @@ export interface DailyDecisionDashboard {
     overallScore: number;
     articleCount: number;
   };
+  insiderActivity?: {
+    signal: "bullish" | "bearish" | "neutral";
+    confidence: number;
+    tradesFound: number;
+    summary: string;
+    sourceUrl: string;
+    asOf: string;
+  };
   checklist: DecisionChecklistItem[];
   aiCommentary?: string;
   aiProvider?: string;
@@ -321,6 +332,21 @@ export interface NewsTeamAnalysisReport {
   };
 }
 
+export interface OpenInsiderTickerSummary {
+  ticker: string;
+  tradesFound: number;
+  buyCount: number;
+  sellCount: number;
+  buyValue: number;
+  sellValue: number;
+  netValue: number;
+  signal: "bullish" | "bearish" | "neutral";
+  confidence: number;
+  summary: string;
+  sourceUrl: string;
+  asOf: string;
+}
+
 // AI Agent Types
 export type Recommendation = "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL";
 export type Trend = "BULLISH" | "BEARISH" | "NEUTRAL";
@@ -349,6 +375,12 @@ export interface StockAnalysis {
     overall: "BULLISH" | "NEUTRAL" | "BEARISH";
     score: number;
     recentNewsSummary: string;
+  };
+  insiderActivity?: {
+    signal: "BULLISH" | "NEUTRAL" | "BEARISH";
+    confidence: number;
+    summary: string;
+    sourceUrl: string;
   };
   checklist: {
     item: string;

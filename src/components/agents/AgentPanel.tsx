@@ -206,6 +206,16 @@ export function AgentPanel({ symbol, timeframe = "1D" }: AgentPanelProps) {
         </div>
       </div>
 
+      {analysis.insiderActivity && (
+        <div className="mb-4 rounded border border-border bg-base p-2 text-xs">
+          <div className="mb-1 font-semibold text-text-muted">Insider Activity (OpenInsider)</div>
+          <div className="text-text-primary">
+            {analysis.insiderActivity.signal} ({analysis.insiderActivity.confidence}%)
+          </div>
+          <div className="mt-1 text-text-muted">{analysis.insiderActivity.summary}</div>
+        </div>
+      )}
+
       {/* Risks */}
       {analysis.risks.length > 0 && (
         <div className="mb-4">

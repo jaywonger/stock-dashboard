@@ -38,6 +38,12 @@ export interface StockAnalysis {
     score: number; // -1 to 1
     recentNewsSummary: string;
   };
+  insiderActivity?: {
+    signal: "BULLISH" | "NEUTRAL" | "BEARISH";
+    confidence: number;
+    summary: string;
+    sourceUrl: string;
+  };
   checklist: {
     item: string;
     status: "Met" | "Caution" | "Not Met";
@@ -62,6 +68,13 @@ interface AnalysisContext {
     atr?: number;
     volumeAvg20?: number;
     currentVolume?: number;
+  };
+  insiderActivity?: {
+    signal: "bullish" | "bearish" | "neutral";
+    confidence: number;
+    tradesFound: number;
+    summary: string;
+    sourceUrl: string;
   };
   marketContext?: {
     spyChange?: number;
@@ -147,7 +160,7 @@ Be concise but specific. Use actual price levels from the data.`,
 }
 
 function buildAnalysisPrompt(symbol: string, context: AnalysisContext): string {
-  const { quote, ohlcv, news, indicators, marketContext } = context;
+  const { quote, ohlcv, news, indicators, insiderActivity, marketContext } = context;
 
   const priceInfo = quote
     ? `
@@ -178,6 +191,16 @@ ${news.slice(0, 5).map((n) => `- [${n.sentimentLabel.toUpperCase()}] ${n.headlin
 `
     : "No recent news";
 
+  const insiderInfo = insiderActivity
+    ? `
+Insider Activity (OpenInsider):
+- Signal: ${insiderActivity.signal.toUpperCase()} (confidence ${insiderActivity.confidence}%)
+- Filings analyzed: ${insiderActivity.tradesFound}
+- Summary: ${insiderActivity.summary}
+- Source: ${insiderActivity.sourceUrl}
+`
+    : "Insider Activity (OpenInsider): No recent insider filing summary available.";
+
   const marketInfo = marketContext
     ? `
 Market Context:
@@ -194,7 +217,9 @@ ${priceInfo}
 Last 20 OHLCV bars:
 ${ohlcvData}
 
-${indicatorInfo}${newsInfo}${marketInfo}
+${indicatorInfo}${newsInfo}
+${insiderInfo}
+${marketInfo}
 
 Please provide:
 1. Clear investment recommendation (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL)
@@ -266,6 +291,19 @@ function createFallbackAnalysis(
       score: 0,
       recentNewsSummary: context.news.length > 0 ? `${context.news.length} news articles, no sentiment analysis performed` : "No news data",
     },
+    insiderActivity: context.insiderActivity
+      ? {
+          signal:
+            context.insiderActivity.signal === "bullish"
+              ? "BULLISH"
+              : context.insiderActivity.signal === "bearish"
+                ? "BEARISH"
+                : "NEUTRAL",
+          confidence: context.insiderActivity.confidence,
+          summary: context.insiderActivity.summary,
+          sourceUrl: context.insiderActivity.sourceUrl
+        }
+      : undefined,
     checklist: [
       { item: "Bullish MA alignment (MA5>MA10>MA20)", status: maAlignment === "BULLISH" ? "Met" : maAlignment === "BEARISH" ? "Not Met" : "Caution" },
       { item: "Price deviation <5% (not chasing highs)", status: "Caution", note: "Requires manual confirmation" },

@@ -60,6 +60,11 @@ export function DailyDecisionCard({ ticker, timeframe }: DailyDecisionCardProps)
       <div className="mb-2 flex flex-wrap items-center gap-2">
         {data.aiProvider && <span className="intel-chip">AI {data.aiProvider}</span>}
         <span className="intel-chip">Sentiment {data.sentiment.overallScore}/100</span>
+        {data.insiderActivity && (
+          <span className="intel-chip">
+            Insider {data.insiderActivity.signal} ({data.insiderActivity.tradesFound})
+          </span>
+        )}
       </div>
 
       <p className="mb-3 text-xs text-text-muted">{data.conclusion}</p>
@@ -69,6 +74,16 @@ export function DailyDecisionCard({ ticker, timeframe }: DailyDecisionCardProps)
       ) : (
         <p className="mb-3 text-xs text-text-subtle">
           AI commentary unavailable for this run. Decision signals are still computed from price action and sentiment.
+        </p>
+      )}
+
+      {data.insiderActivity && (
+        <p className="mb-3 text-xs text-text-subtle">
+          {data.insiderActivity.summary} Source:{" "}
+          <a href={data.insiderActivity.sourceUrl} target="_blank" rel="noreferrer" className="text-neutral hover:underline">
+            OpenInsider
+          </a>
+          .
         </p>
       )}
 

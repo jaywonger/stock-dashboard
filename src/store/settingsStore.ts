@@ -49,7 +49,10 @@ const defaultSettings: SettingsState = {
     claudeApiKey: "",
     openaiApiKey: "",
     openaiBaseUrl: "",
-    openaiModel: ""
+    openaiModel: "",
+    openrouterApiKey: "",
+    openrouterBaseUrl: "",
+    openrouterModel: ""
   }
 };
 

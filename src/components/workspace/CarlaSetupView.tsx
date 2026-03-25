@@ -5,6 +5,7 @@ import { useNewsTeamAnalysis } from "../../hooks/useNewsTeamAnalysis";
 import { useMarketStore } from "../../store/marketStore";
 import { useScreenerStore } from "../../store/screenerStore";
 import { DailyDecisionCard } from "../news/DailyDecisionCard";
+import { OpenInsiderCard } from "../news/OpenInsiderCard";
 import { TeamDebateCard } from "../news/TeamDebateCard";
 import { ScreenerResults } from "../screener/ScreenerResults";
 
@@ -335,6 +336,7 @@ export function CarlaSetupView() {
           </div>
 
           <DailyDecisionCard ticker={analysisTicker} timeframe="1D" />
+          <OpenInsiderCard ticker={analysisTicker} />
           <TeamDebateCard isLoading={teamQuery.isLoading} isError={teamQuery.isError} data={teamQuery.data} />
         </div>
       </div>

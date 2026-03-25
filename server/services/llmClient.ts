@@ -20,6 +20,7 @@ interface LLMConfig {
   baseUrl?: string;
   temperature: number;
   maxTokens: number;
+  reasoningEffort?: "low" | "medium" | "high";
 }
 
 interface LLMMessage {
@@ -52,6 +53,7 @@ export async function callLLM(
   const litellmModel = process.env.LITELLM_MODEL || "gemini/gemini-2.0-flash";
   const litellmApiKey = process.env.LITELLM_API_KEY;
   const litellmBaseUrl = process.env.LITELLM_BASE_URL;
+  const reasoningEffort = normalizeReasoningEffort(process.env.LLM_REASONING_EFFORT);
 
   // Check if using LiteLLM proxy
   if (litellmBaseUrl) {
@@ -61,6 +63,7 @@ export async function callLLM(
       baseUrl: litellmBaseUrl,
       temperature: config?.temperature ?? 0.3,
       maxTokens: config?.maxTokens ?? 1000,
+      reasoningEffort: config?.reasoningEffort ?? reasoningEffort,
     });
   }
 
@@ -90,6 +93,18 @@ export async function callLLM(
       baseUrl: process.env.OPENAI_BASE_URL,
       temperature: config?.temperature ?? 0.3,
       maxTokens: config?.maxTokens ?? 1000,
+      reasoningEffort: config?.reasoningEffort ?? reasoningEffort,
+    });
+  }
+
+  if (litellmModel.startsWith("openrouter/")) {
+    return callOpenAI(messages, {
+      model: litellmModel.replace(/^openrouter\//, ""),
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+      temperature: config?.temperature ?? 0.3,
+      maxTokens: config?.maxTokens ?? 1000,
+      reasoningEffort: config?.reasoningEffort ?? reasoningEffort,
     });
   }
 
@@ -106,19 +121,33 @@ async function callLiteLLMProxy(
   messages: LLMMessage[],
   config: LLMConfig
 ): Promise<LLMResponse> {
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+  const buildBody = (withReasoningEffort: boolean) => ({
+    model: config.model,
+    messages,
+    temperature: config.temperature,
+    max_tokens: config.maxTokens,
+    ...(withReasoningEffort && config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {})
+  });
+
+  let response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${config.apiKey}`,
     },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      temperature: config.temperature,
-      max_tokens: config.maxTokens,
-    }),
+    body: JSON.stringify(buildBody(true)),
   });
+
+  if (!response.ok && config.reasoningEffort && (response.status === 400 || response.status === 422)) {
+    response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(buildBody(false)),
+    });
+  }
 
   if (!response.ok) {
     throw new Error(`LiteLLM proxy error: ${response.status} ${response.statusText}`);
@@ -237,19 +266,33 @@ async function callOpenAI(
   }
 
   const baseUrl = config.baseUrl || "https://api.openai.com/v1";
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const buildBody = (withReasoningEffort: boolean) => ({
+    model: config.model || "gpt-4o-mini",
+    messages,
+    temperature: config.temperature,
+    max_tokens: config.maxTokens,
+    ...(withReasoningEffort && config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {})
+  });
+
+  let response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: config.model || "gpt-4o-mini",
-      messages,
-      temperature: config.temperature,
-      max_tokens: config.maxTokens,
-    }),
+    body: JSON.stringify(buildBody(true)),
   });
+
+  if (!response.ok && config.reasoningEffort && (response.status === 400 || response.status === 422)) {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(buildBody(false)),
+    });
+  }
 
   if (!response.ok) {
     const error = await response.text();
@@ -294,7 +337,16 @@ export function isAgentEnabled(): boolean {
     process.env.LITELLM_API_KEY ||
     process.env.GEMINI_API_KEY ||
     process.env.OPENAI_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
     process.env.CLAUDE_API_KEY
   );
   return enabled.toLowerCase() === "true" && hasApiKey;
+}
+
+function normalizeReasoningEffort(value?: string): "low" | "medium" | "high" | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "max") return "high";
+  if (normalized === "low" || normalized === "medium" || normalized === "high") return normalized;
+  return undefined;
 }

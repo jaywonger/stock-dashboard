@@ -91,15 +91,20 @@ app.use(
       .map((item) => item.trim())
       .filter(Boolean),
     llmProvider: process.env.LLM_PROVIDER,
+    llmReasoningEffort: process.env.LLM_REASONING_EFFORT,
     openAiApiKey: process.env.OPENAI_API_KEY,
     openAiBaseUrl: process.env.OPENAI_BASE_URL,
     openAiModel: process.env.OPENAI_MODEL,
+    openRouterApiKey: process.env.OPENROUTER_API_KEY,
+    openRouterBaseUrl: process.env.OPENROUTER_BASE_URL,
+    openRouterModel: process.env.OPENROUTER_MODEL,
     geminiApiKey: process.env.GEMINI_API_KEY,
     geminiModel: process.env.GEMINI_MODEL,
     anthropicApiKey: process.env.CLAUDE_API_KEY,
     anthropicModel: process.env.CLAUDE_MODEL,
     ollamaApiBase: process.env.OLLAMA_API_BASE,
-    ollamaModel: process.env.OLLAMA_MODEL
+    ollamaModel: process.env.OLLAMA_MODEL,
+    openInsiderScoreWeight: Number(process.env.OPENINSIDER_SCORE_WEIGHT ?? 1.4)
   })
 );
 

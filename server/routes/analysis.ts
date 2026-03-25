@@ -2,6 +2,7 @@ import { Router } from "express";
 import { calculateATR, calculateMACD, calculateRSI, calculateSMA, latestSeriesValue } from "../../src/lib/indicators";
 import { aggregateNews } from "../../src/services/newsAggregator";
 import { database } from "../db/database";
+import { fetchOpenInsiderSummary, type OpenInsiderSummary } from "../services/openInsider";
 import type {
   AnalystStance,
   AnalystView,
@@ -28,12 +29,17 @@ interface AnalysisRouteConfig {
   openAiApiKey?: string;
   openAiBaseUrl?: string;
   openAiModel?: string;
+  llmReasoningEffort?: string;
+  openRouterApiKey?: string;
+  openRouterBaseUrl?: string;
+  openRouterModel?: string;
   geminiApiKey?: string;
   geminiModel?: string;
   anthropicApiKey?: string;
   anthropicModel?: string;
   ollamaApiBase?: string;
   ollamaModel?: string;
+  openInsiderScoreWeight?: number;
 }
 
 const dayRangeByTimeframe: Record<Timeframe, number> = {
@@ -52,7 +58,7 @@ const round = (value: number): number => Number(value.toFixed(2));
 const REPORT_SYSTEM_PROMPT =
   "You are a disciplined equity analyst. Produce concise, practical commentary for a dashboard card. No markdown.";
 
-type SupportedLlmProvider = "openai" | "gemini" | "anthropic" | "ollama";
+type SupportedLlmProvider = "openai" | "openrouter" | "gemini" | "anthropic" | "ollama";
 const stanceToNumber = (stance: AnalystStance): number => (stance === "bullish" ? 1 : stance === "bearish" ? -1 : 0);
 const numberToStance = (value: number): AnalystStance => (value > 0.2 ? "bullish" : value < -0.2 ? "bearish" : "neutral");
 const parseAnalysisDate = (value: string | undefined): string => {
@@ -62,7 +68,15 @@ const parseAnalysisDate = (value: string | undefined): string => {
   return date.toISOString().slice(0, 10);
 };
 
-const buildDecision = (ticker: string, timeframe: Timeframe, bars: OHLCV[], sentimentScore: number, articleCount: number): DailyDecisionDashboard => {
+const buildDecision = (
+  ticker: string,
+  timeframe: Timeframe,
+  bars: OHLCV[],
+  sentimentScore: number,
+  articleCount: number,
+  insiderActivity?: OpenInsiderSummary,
+  insiderScoreWeight = 1.4
+): DailyDecisionDashboard => {
   const latest = bars[bars.length - 1];
   const previous = bars[bars.length - 2] ?? latest;
   const price = latest.close;
@@ -86,6 +100,14 @@ const buildDecision = (ticker: string, timeframe: Timeframe, bars: OHLCV[], sent
   if (typeof macdHistogram === "number") score += macdHistogram >= 0 ? 1 : -1;
   if (sentimentScore >= 60) score += 1;
   else if (sentimentScore <= 40) score -= 1;
+  const insiderDirection = insiderActivity?.signal === "bullish" ? 1 : insiderActivity?.signal === "bearish" ? -1 : 0;
+  const insiderConfidenceFactor = insiderActivity ? clamp(insiderActivity.confidence / 100, 0.55, 1.0) : 0;
+  const insiderBreadthFactor = insiderActivity ? clamp(insiderActivity.tradesFound / 8, 0.5, 1.4) : 0;
+  const insiderScoreContribution =
+    insiderDirection === 0
+      ? 0
+      : clamp(insiderDirection * insiderScoreWeight * insiderConfidenceFactor * insiderBreadthFactor, -2.5, 2.5);
+  score += insiderScoreContribution;
 
   const action = score >= 2 ? "buy" : score <= -2 ? "sell" : "hold";
   const confidence = clamp(Math.round(52 + Math.abs(score) * 9 + Math.min(articleCount, 12)), 50, 94);
@@ -144,6 +166,18 @@ const buildDecision = (ticker: string, timeframe: Timeframe, bars: OHLCV[], sent
       label: "News sentiment context",
       status: sentimentScore >= 60 ? "pass" : sentimentScore <= 40 ? "fail" : "watch",
       detail: `${articleCount} recent articles | sentiment score ${Math.round(sentimentScore)}/100`
+    },
+    {
+      label: "Insider flow (OpenInsider)",
+      status:
+        insiderActivity?.signal === "bullish"
+          ? "pass"
+          : insiderActivity?.signal === "bearish"
+            ? "fail"
+            : "watch",
+      detail: insiderActivity
+        ? `${insiderActivity.summary} Score impact ${insiderScoreContribution >= 0 ? "+" : ""}${insiderScoreContribution.toFixed(2)}`
+        : "No recent insider filings found from OpenInsider."
     }
   ] as DailyDecisionDashboard["checklist"];
 
@@ -176,6 +210,16 @@ const buildDecision = (ticker: string, timeframe: Timeframe, bars: OHLCV[], sent
       overallScore: Math.round(sentimentScore),
       articleCount
     },
+    insiderActivity: insiderActivity
+      ? {
+          signal: insiderActivity.signal,
+          confidence: insiderActivity.confidence,
+          tradesFound: insiderActivity.tradesFound,
+          summary: insiderActivity.summary,
+          sourceUrl: insiderActivity.sourceUrl,
+          asOf: insiderActivity.asOf
+        }
+      : undefined,
     checklist
   };
 };
@@ -317,34 +361,46 @@ const callOpenAiCompatible = async ({
   endpointBase,
   model,
   apiKey,
+  reasoningEffort,
   report
 }: {
   endpointBase: string;
   model: string;
   apiKey?: string;
+  reasoningEffort?: "low" | "medium" | "high";
   report: DailyDecisionDashboard;
 }): Promise<string | undefined> => {
   const endpoint = `${endpointBase.replace(/\/+$/, "")}/chat/completions`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  const response = await fetch(endpoint, {
+  const buildBody = (withReasoningEffort: boolean) => ({
+    model,
+    temperature: 0.2,
+    ...(withReasoningEffort && reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+    messages: [
+      {
+        role: "system",
+        content: REPORT_SYSTEM_PROMPT
+      },
+      {
+        role: "user",
+        content: buildUserPrompt(report)
+      }
+    ]
+  });
+
+  let response = await fetch(endpoint, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      messages: [
-        {
-          role: "system",
-          content: REPORT_SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: buildUserPrompt(report)
-        }
-      ]
-    })
+    body: JSON.stringify(buildBody(true))
   });
+  if (!response.ok && reasoningEffort && (response.status === 400 || response.status === 422)) {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(buildBody(false))
+    });
+  }
   if (!response.ok) return undefined;
   const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return payload.choices?.[0]?.message?.content?.trim() || undefined;
@@ -424,11 +480,13 @@ const resolveProviderOrder = (config: AnalysisRouteConfig): SupportedLlmProvider
   const preferred = (config.llmProvider ?? "auto").toLowerCase();
   const available: SupportedLlmProvider[] = [];
   if (config.openAiApiKey) available.push("openai");
+  if (config.openRouterApiKey) available.push("openrouter");
   if (config.geminiApiKey) available.push("gemini");
   if (config.anthropicApiKey) available.push("anthropic");
   if (config.ollamaApiBase) available.push("ollama");
 
   if (preferred === "openai") return available.includes("openai") ? ["openai"] : [];
+  if (preferred === "openrouter") return available.includes("openrouter") ? ["openrouter"] : [];
   if (preferred === "gemini") return available.includes("gemini") ? ["gemini"] : [];
   if (preferred === "anthropic") return available.includes("anthropic") ? ["anthropic"] : [];
   if (preferred === "ollama") return available.includes("ollama") ? ["ollama"] : [];
@@ -436,10 +494,23 @@ const resolveProviderOrder = (config: AnalysisRouteConfig): SupportedLlmProvider
 
   // auto mode fallback order
   const ordered: SupportedLlmProvider[] = [];
-  for (const provider of ["openai", "gemini", "anthropic", "ollama"] as const) {
+  for (const provider of ["openai", "openrouter", "gemini", "anthropic", "ollama"] as const) {
     if (available.includes(provider)) ordered.push(provider);
   }
   return ordered;
+};
+
+const normalizeReasoningEffort = (value?: string): "low" | "medium" | "high" | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "max") return "high";
+  if (normalized === "low" || normalized === "medium" || normalized === "high") return normalized;
+  return undefined;
+};
+
+const normalizeInsiderScoreWeight = (value?: number): number => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1.4;
+  return clamp(value, 0.2, 3.0);
 };
 
 const maybeGenerateCommentary = async (
@@ -447,6 +518,7 @@ const maybeGenerateCommentary = async (
   report: DailyDecisionDashboard
 ): Promise<{ text?: string; provider?: string }> => {
   const providers = resolveProviderOrder(config);
+  const reasoningEffort = normalizeReasoningEffort(config.llmReasoningEffort);
   for (const provider of providers) {
     try {
       if (provider === "openai" && config.openAiApiKey) {
@@ -454,9 +526,20 @@ const maybeGenerateCommentary = async (
           endpointBase: config.openAiBaseUrl ?? "https://api.openai.com/v1",
           model: config.openAiModel ?? "gpt-4o-mini",
           apiKey: config.openAiApiKey,
+          reasoningEffort,
           report
         });
         if (text) return { text, provider: "openai" };
+      }
+      if (provider === "openrouter" && config.openRouterApiKey) {
+        const text = await callOpenAiCompatible({
+          endpointBase: config.openRouterBaseUrl ?? "https://openrouter.ai/api/v1",
+          model: config.openRouterModel ?? "openai/gpt-4o-mini",
+          apiKey: config.openRouterApiKey,
+          reasoningEffort,
+          report
+        });
+        if (text) return { text, provider: "openrouter" };
       }
       if (provider === "gemini" && config.geminiApiKey) {
         const text = await callGemini({
@@ -478,6 +561,7 @@ const maybeGenerateCommentary = async (
         const text = await callOpenAiCompatible({
           endpointBase: config.ollamaApiBase,
           model: config.ollamaModel ?? "llama3.1:8b",
+          reasoningEffort,
           report
         });
         if (text) return { text, provider: "ollama" };
@@ -492,9 +576,11 @@ const maybeGenerateCommentary = async (
 export const createAnalysisRouter = (stockService: StockDataProvider, config: AnalysisRouteConfig) => {
   const router = Router();
   const analysisCache = new Map<string, { data: DailyDecisionDashboard; cachedAt: number }>();
+  const openInsiderCache = new Map<string, { data: OpenInsiderSummary; cachedAt: number }>();
   const analysisInflight = new Map<string, Promise<DailyDecisionDashboard>>();
   const analysisTtlMs = Number(process.env.ANALYSIS_CACHE_TTL_MS ?? 5 * 60_000);
   const barsTtlMs = Number(process.env.ANALYSIS_OHLCV_TTL_MS ?? 5 * 60_000);
+  const openInsiderTtlMs = Number(process.env.OPENINSIDER_CACHE_TTL_MS ?? 10 * 60_000);
 
   const getCachedAnalysis = (key: string) => {
     const row = analysisCache.get(key);
@@ -502,6 +588,32 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
     if (Date.now() - row.cachedAt > analysisTtlMs) return null;
     return row.data;
   };
+
+  const getCachedOpenInsider = (key: string) => {
+    const row = openInsiderCache.get(key);
+    if (!row) return null;
+    if (Date.now() - row.cachedAt > openInsiderTtlMs) return null;
+    return row.data;
+  };
+
+  router.get("/openinsider", async (req, res) => {
+    try {
+      const ticker = String(req.query.ticker ?? "").toUpperCase().trim();
+      if (!ticker) return res.status(400).json({ error: "ticker is required" });
+
+      const cacheKey = `openinsider:${ticker}`;
+      const cached = getCachedOpenInsider(cacheKey);
+      if (cached) return res.json(cached);
+
+      const summary = await fetchOpenInsiderSummary(ticker);
+      if (!summary) return res.status(404).json({ error: "No OpenInsider data available for ticker" });
+
+      openInsiderCache.set(cacheKey, { data: summary, cachedAt: Date.now() });
+      return res.json(summary);
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : "OpenInsider lookup failed" });
+    }
+  });
 
   router.get("/daily", async (req, res) => {
     try {
@@ -559,7 +671,17 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
           database.saveNewsCache(newsCacheKey, news, 15 * 60_000);
         }
 
-        const report = buildDecision(ticker, timeframe, bars, news.summary.overallScore, news.articles.length);
+        const insiderActivity = await fetchOpenInsiderSummary(ticker);
+        const insiderScoreWeight = normalizeInsiderScoreWeight(config.openInsiderScoreWeight);
+        const report = buildDecision(
+          ticker,
+          timeframe,
+          bars,
+          news.summary.overallScore,
+          news.articles.length,
+          insiderActivity,
+          insiderScoreWeight
+        );
         const commentary = await maybeGenerateCommentary(config, report);
         report.aiCommentary = commentary.text ?? buildFallbackCommentary(report);
         report.aiProvider = commentary.provider ?? "rule-based";

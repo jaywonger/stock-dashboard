@@ -24,6 +24,9 @@ const aiFields: Array<{ label: string; key: string; placeholder?: string; hint?:
   { label: "OpenAI API Key", key: "openaiApiKey", hint: "platform.openai.com" },
   { label: "OpenAI Base URL", key: "openaiBaseUrl", placeholder: "https://api.openai.com/v1", hint: "For compatible APIs (DeepSeek, etc.)" },
   { label: "OpenAI Model", key: "openaiModel", placeholder: "gpt-4o-mini" },
+  { label: "OpenRouter API Key", key: "openrouterApiKey", hint: "openrouter.ai" },
+  { label: "OpenRouter Base URL", key: "openrouterBaseUrl", placeholder: "https://openrouter.ai/api/v1" },
+  { label: "OpenRouter Model", key: "openrouterModel", placeholder: "openai/gpt-4o-mini" },
 ];
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
@@ -37,7 +40,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const setAiSetting = (key: string, value: string) => {
     localStorage.setItem(`ai_${key}`, value);
     // Also sync to store for AI keys
-    if (key.endsWith("Key") || key.endsWith("Url") || key === "litellmModel" || key === "openaiModel") {
+    if (
+      key.endsWith("Key") ||
+      key.endsWith("Url") ||
+      key === "litellmModel" ||
+      key === "openaiModel" ||
+      key === "openrouterModel"
+    ) {
       const storeKey = key as keyof typeof settings.keys;
       if (storeKey in settings.keys) {
         settings.setAiApiKey(storeKey, value);

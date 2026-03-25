@@ -4,6 +4,7 @@ import { useNews } from "../../hooks/useNews";
 import { useNewsTeamAnalysis } from "../../hooks/useNewsTeamAnalysis";
 import { useNewsStore } from "../../store/newsStore";
 import { DailyDecisionCard } from "../news/DailyDecisionCard";
+import { OpenInsiderCard } from "../news/OpenInsiderCard";
 import { ArticleCard } from "../news/ArticleCard";
 import { TeamDebateCard } from "../news/TeamDebateCard";
 import { Skeleton } from "../shared/Skeleton";
@@ -77,6 +78,7 @@ export function NewsAnalysisView({ ticker, timeframe }: NewsAnalysisViewProps) {
       <div className="grid gap-3 xl:grid-cols-[440px_1fr]">
         <div className="space-y-3">
           <DailyDecisionCard ticker={analysisTicker} timeframe={timeframe} />
+          <OpenInsiderCard ticker={analysisTicker} />
           <TeamDebateCard isLoading={teamQuery.isLoading} isError={teamQuery.isError} data={teamQuery.data} />
         </div>
 

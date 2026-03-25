@@ -85,6 +85,12 @@ Optional (dashboard still works with mock fallback):
 - `BENZINGA_API_KEY`
 - `RSS_FEED_URLS`
 
+OpenInsider is also used for insider-trading context in analysis routes (no API key required):
+- `OPENINSIDER_ENABLED` (default `true`)
+- `OPENINSIDER_LOOKBACK_DAYS` (default `30`)
+- `OPENINSIDER_TIMEOUT_MS` (default `8000`)
+- `OPENINSIDER_SCORE_WEIGHT` (default `1.4`, allowed `0.2` to `3.0`)
+
 ### AI Agent API Keys (Optional)
 
 For AI-powered features (stock analysis, chat, monitoring):
@@ -93,7 +99,9 @@ For AI-powered features (stock analysis, chat, monitoring):
 - `LITELLM_API_KEY` – LiteLLM API key
 - `GEMINI_API_KEY` – Google AI Studio key (alternative)
 - `OPENAI_API_KEY` – OpenAI or compatible API key
+- `OPENROUTER_API_KEY` – OpenRouter API key
 - `CLAUDE_API_KEY` – Anthropic Claude API key
+- `LLM_REASONING_EFFORT` – Optional reasoning level (`low`, `medium`, `high`, or `max` aliasing to `high`)
 
 Configure in Settings modal or `.env` file.
 

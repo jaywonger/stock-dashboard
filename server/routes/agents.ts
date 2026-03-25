@@ -15,6 +15,7 @@ import { chatWithAgent, compareStocks } from "../services/chatAgent";
 import { runWatchlistMonitor, prioritizeAlerts } from "../services/monitorAgent";
 import { isAgentEnabled } from "../services/llmClient";
 import type { FallbackStockDataService } from "../../src/services/stockDataService";
+import { fetchOpenInsiderSummary } from "../services/openInsider";
 
 interface AgentRouterDeps {
   stockService: FallbackStockDataService;
@@ -65,6 +66,7 @@ export function createAgentsRouter({ stockService }: AgentRouterDeps) {
         stockService.getOHLCV(symbol, timeframe as any, new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), new Date()).catch(() => []),
         loadNews(symbol, 10).catch(() => []),
       ]);
+      const insiderActivity = await fetchOpenInsiderSummary(symbol);
 
       // Calculate indicators
       const indicators = await calculateIndicators(ohlcv);
@@ -73,6 +75,7 @@ export function createAgentsRouter({ stockService }: AgentRouterDeps) {
         quote,
         ohlcv,
         news,
+        insiderActivity,
         indicators,
       });
 
@@ -105,12 +108,13 @@ export function createAgentsRouter({ stockService }: AgentRouterDeps) {
       }
 
       const getContext = async (symbol: string) => {
-        const [quote, ohlcv, news] = await Promise.all([
+        const [quote, ohlcv, news, insiderActivity] = await Promise.all([
           stockService.getQuote(symbol).catch(() => null),
           stockService.getOHLCV(symbol, timeframe as any, new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), new Date()).catch(() => []),
           loadNews(symbol, 5).catch(() => []),
+          fetchOpenInsiderSummary(symbol),
         ]);
-        return { quote, ohlcv, news, indicators: await calculateIndicators(ohlcv) };
+        return { quote, ohlcv, news, insiderActivity, indicators: await calculateIndicators(ohlcv) };
       };
 
       const results = await batchAnalyzeStocks(symbols, getContext, 3);
@@ -256,6 +260,7 @@ export function createAgentsRouter({ stockService }: AgentRouterDeps) {
         process.env.LITELLM_API_KEY ||
         process.env.GEMINI_API_KEY ||
         process.env.OPENAI_API_KEY ||
+        process.env.OPENROUTER_API_KEY ||
         process.env.CLAUDE_API_KEY
       ),
     };
