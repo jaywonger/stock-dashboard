@@ -24,6 +24,28 @@ export const createQuotesRouter = (stockService: StockDataProvider) => {
     }
   });
 
+  router.get("/batch", async (req, res) => {
+    try {
+      const raw = String(req.query.symbols ?? "");
+      if (!raw.trim()) return res.json([]);
+      const symbols = Array.from(
+        new Set(
+          raw
+            .split(",")
+            .map((item) => item.trim().toUpperCase())
+            .filter(Boolean)
+        )
+      ).slice(0, 100);
+      const settled = await Promise.allSettled(symbols.map((ticker) => stockService.getQuote(ticker)));
+      const quotes = settled
+        .filter((row): row is PromiseFulfilledResult<Awaited<ReturnType<typeof stockService.getQuote>>> => row.status === "fulfilled")
+        .map((row) => row.value);
+      res.json(quotes);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Batch quote failed" });
+    }
+  });
+
   router.get("/:ticker", async (req, res) => {
     try {
       const ticker = String(req.params.ticker ?? "").toUpperCase();

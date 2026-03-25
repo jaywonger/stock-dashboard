@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Download, FileUp, Plus, Trash2 } from "lucide-react";
-import type { WatchlistItem, WatchlistMetrics } from "../../types";
-import { useQuote } from "../../hooks/useQuote";
+import type { Quote, WatchlistItem, WatchlistMetrics } from "../../types";
+import { useQuotesBatch } from "../../hooks/useQuotesBatch";
 import { useWatchlists } from "../../hooks/useWatchlists";
 import { useWatchlistMetrics } from "../../hooks/useWatchlistMetrics";
 import { useMarketStore } from "../../store/marketStore";
@@ -16,25 +16,26 @@ interface WatchlistManagerProps {
 
 function RowWithQuote({
   item,
+  quote,
+  quoteLoading,
   onSelect,
   onRemove,
   metricsBySymbol,
-  metricsLoading,
-  quoteIntervalMs
+  metricsLoading
 }: {
   item: WatchlistItem;
+  quote?: Quote;
+  quoteLoading?: boolean;
   onSelect: () => void;
   onRemove: () => void;
   metricsBySymbol: Record<string, WatchlistMetrics>;
   metricsLoading: boolean;
-  quoteIntervalMs: number;
 }) {
-  const quote = useQuote(item.symbol, { intervalMs: quoteIntervalMs });
   return (
     <WatchlistRow
       item={item}
-      quote={quote.data}
-      quoteLoading={quote.isLoading}
+      quote={quote}
+      quoteLoading={quoteLoading}
       metrics={metricsBySymbol[item.symbol]}
       metricsLoading={metricsLoading}
       onClick={onSelect}
@@ -64,6 +65,8 @@ export function WatchlistManager({ collapsed = false, embedded = false }: Watchl
   const metricsQuery = useWatchlistMetrics(symbols);
   const metricsBySymbol = Object.fromEntries((metricsQuery.data ?? []).map((row) => [row.symbol, row]));
   const quoteIntervalMs = 120_000;
+  const quotesQuery = useQuotesBatch(symbols, { intervalMs: quoteIntervalMs });
+  const quotesBySymbol = quotesQuery.data ?? {};
 
   useEffect(() => {
     if (!activeWatchlist && watchlists.length > 0) {
@@ -313,11 +316,12 @@ export function WatchlistManager({ collapsed = false, embedded = false }: Watchl
                 <RowWithQuote
                   key={item.symbol}
                   item={item}
+                  quote={quotesBySymbol[item.symbol]}
+                  quoteLoading={quotesQuery.isLoading && !quotesBySymbol[item.symbol]}
                   onSelect={() => setTicker(item.symbol)}
                   onRemove={() => void removeTicker(item.symbol)}
                   metricsBySymbol={metricsBySymbol}
                   metricsLoading={metricsQuery.isLoading}
-                  quoteIntervalMs={quoteIntervalMs}
                 />
               ))}
             </tbody>

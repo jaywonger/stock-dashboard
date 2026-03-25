@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { Bell, ChevronLeftSquare, ChevronRightSquare, Settings, Bot } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useQuote } from "../../hooks/useQuote";
 import { formatPrice } from "../../lib/formatters";
 import { HttpStockDataService } from "../../services/stockDataService";
 import { useMarketStore } from "../../store/marketStore";
+import type { Quote } from "../../types";
+import { useQuotesBatch } from "../../hooks/useQuotesBatch";
 import { PriceChange } from "../shared/PriceChange";
 
 const INDICES = ["SPY", "QQQ", "DIA", "IWM", "VIX"];
@@ -17,10 +18,9 @@ interface HeaderProps {
   onToggleAgentPanel?: () => void;
 }
 
-const GlobalTickerTile = memo(function GlobalTickerTile({ symbol }: { symbol: string }) {
+const GlobalTickerTile = memo(function GlobalTickerTile({ symbol, quote, loading }: { symbol: string; quote?: Quote; loading?: boolean }) {
   const setTicker = useMarketStore((state) => state.setSelectedTicker);
-  const query = useQuote(symbol);
-  if (query.isLoading || !query.data) {
+  if (loading || !quote) {
     return <div className="h-12 w-[132px] animate-pulse rounded-md bg-[#1b2230]" />;
   }
   return (
@@ -29,8 +29,8 @@ const GlobalTickerTile = memo(function GlobalTickerTile({ symbol }: { symbol: st
       onClick={() => setTicker(symbol)}
     >
       <div className="ticker-font text-xs text-text-muted">{symbol}</div>
-      <div className="ticker-font text-sm font-medium text-text-primary">{formatPrice(query.data.price)}</div>
-      <PriceChange change={query.data.change} changePercent={query.data.changePercent} compact />
+      <div className="ticker-font text-sm font-medium text-text-primary">{formatPrice(quote.price)}</div>
+      <PriceChange change={quote.change} changePercent={quote.changePercent} compact />
     </button>
   );
 });
@@ -38,6 +38,7 @@ const GlobalTickerTile = memo(function GlobalTickerTile({ symbol }: { symbol: st
 export function Header({ onOpenSettings, onToggleLeft, onToggleRight, onToggleAgentPanel }: HeaderProps) {
   const [clock, setClock] = useState(() => new Date());
   const alerts = useMarketStore((state) => state.alerts);
+  const indicesQuery = useQuotesBatch(INDICES, { intervalMs: 60_000 });
 
   const marketStatus = useQuery({
     queryKey: ["market-status"],
@@ -72,7 +73,12 @@ export function Header({ onOpenSettings, onToggleLeft, onToggleRight, onToggleAg
 
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
           {INDICES.map((symbol) => (
-            <GlobalTickerTile key={symbol} symbol={symbol} />
+            <GlobalTickerTile
+              key={symbol}
+              symbol={symbol}
+              quote={indicesQuery.data?.[symbol]}
+              loading={indicesQuery.isLoading && !indicesQuery.data?.[symbol]}
+            />
           ))}
         </div>
 

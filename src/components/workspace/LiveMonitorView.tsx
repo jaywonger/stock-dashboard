@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { Activity } from "lucide-react";
-import { useQuote } from "../../hooks/useQuote";
 import { formatDateTime, formatPrice } from "../../lib/formatters";
 import { DEFAULT_TICKERS } from "../../store/marketStore";
+import type { Quote } from "../../types";
+import { useQuotesBatch } from "../../hooks/useQuotesBatch";
 import { PriceChange } from "../shared/PriceChange";
 
 interface LiveMonitorViewProps {
@@ -10,10 +11,7 @@ interface LiveMonitorViewProps {
   compareTicker: string | null;
 }
 
-function LiveTickerCard({ symbol }: { symbol: string }) {
-  const query = useQuote(symbol);
-  const quote = query.data;
-
+function LiveTickerCard({ symbol, quote, loading }: { symbol: string; quote?: Quote; loading?: boolean }) {
   return (
     <div className="rounded border border-border bg-panel p-3">
       <div className="mb-2 flex items-center justify-between">
@@ -23,7 +21,7 @@ function LiveTickerCard({ symbol }: { symbol: string }) {
           Live
         </span>
       </div>
-      {query.isLoading || !quote ? (
+      {loading || !quote ? (
         <div className="text-xs text-text-muted">Loading quote...</div>
       ) : (
         <>
@@ -44,6 +42,8 @@ export function LiveMonitorView({ ticker, compareTicker }: LiveMonitorViewProps)
         .slice(0, 8),
     [ticker, compareTicker]
   );
+  const quotesQuery = useQuotesBatch(symbols, { intervalMs: 30_000 });
+  const quotesBySymbol = quotesQuery.data ?? {};
 
   return (
     <section className="h-full overflow-y-auto p-3">
@@ -59,7 +59,12 @@ export function LiveMonitorView({ ticker, compareTicker }: LiveMonitorViewProps)
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {symbols.map((symbol) => (
-          <LiveTickerCard key={symbol} symbol={symbol} />
+          <LiveTickerCard
+            key={symbol}
+            symbol={symbol}
+            quote={quotesBySymbol[symbol]}
+            loading={quotesQuery.isLoading && !quotesBySymbol[symbol]}
+          />
         ))}
       </div>
     </section>
