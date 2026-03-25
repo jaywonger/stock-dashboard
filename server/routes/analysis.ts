@@ -52,6 +52,13 @@ const dayRangeByTimeframe: Record<Timeframe, number> = {
   "1W": 900,
   "1M": 1800
 };
+const supportedTimeframes: Timeframe[] = ["1m", "5m", "15m", "1h", "4h", "1D", "1W", "1M"];
+const isTimeframe = (value: string): value is Timeframe => supportedTimeframes.includes(value as Timeframe);
+const normalizeTimeframe = (value: unknown): Timeframe => {
+  if (typeof value !== "string") return "1D";
+  const normalized = value.trim();
+  return isTimeframe(normalized) ? normalized : "1D";
+};
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 const round = (value: number): number => Number(value.toFixed(2));
@@ -596,6 +603,41 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
     return row.data;
   };
 
+  const fetchBarsForTimeframe = async (ticker: string, timeframe: Timeframe, to: Date): Promise<OHLCV[]> => {
+    const from = new Date(to);
+    from.setDate(to.getDate() - (dayRangeByTimeframe[timeframe] ?? 365));
+    const barsCacheKey = `analysis:bars:${ticker}:${timeframe}`;
+    const cachedBars = database.getOHLCVCache(barsCacheKey);
+    if (cachedBars && cachedBars.length > 0) return cachedBars;
+    const bars = await stockService.getOHLCV(ticker, timeframe, from, to);
+    if (bars.length > 0) {
+      database.saveOHLCVCache(barsCacheKey, ticker, timeframe, bars, barsTtlMs);
+    }
+    return bars;
+  };
+
+  const fetchBarsWithFallbacks = async (ticker: string, timeframe: Timeframe, to: Date): Promise<OHLCV[]> => {
+    const fallbackOrder: Timeframe[] = [timeframe];
+    if (timeframe !== "1D") fallbackOrder.push("1D");
+    if ((timeframe === "1m" || timeframe === "5m" || timeframe === "15m") && !fallbackOrder.includes("1h")) {
+      fallbackOrder.push("1h");
+    }
+    if (timeframe === "1M" && !fallbackOrder.includes("1W")) {
+      fallbackOrder.push("1W");
+    }
+
+    let lastError: unknown;
+    for (const candidate of fallbackOrder) {
+      try {
+        const bars = await fetchBarsForTimeframe(ticker, candidate, to);
+        if (bars.length > 0) return bars;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("No OHLCV data available for analysis");
+  };
+
   router.get("/openinsider", async (req, res) => {
     try {
       const ticker = String(req.query.ticker ?? "").toUpperCase().trim();
@@ -620,7 +662,7 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
       const ticker = String(req.query.ticker ?? "").toUpperCase();
       if (!ticker) return res.status(400).json({ error: "ticker is required" });
 
-      const timeframe = String(req.query.timeframe ?? "1D") as Timeframe;
+      const timeframe = normalizeTimeframe(req.query.timeframe);
       const analysisKey = `${ticker}:${timeframe}`;
       const cachedAnalysis = getCachedAnalysis(analysisKey);
       if (cachedAnalysis) return res.json(cachedAnalysis);
@@ -630,16 +672,9 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
       }
 
       const to = new Date();
-      const from = new Date();
-      from.setDate(to.getDate() - (dayRangeByTimeframe[timeframe] ?? 365));
-      const barsCacheKey = `analysis:bars:${ticker}:${timeframe}`;
-      const cachedBars = database.getOHLCVCache(barsCacheKey);
 
       const task = (async () => {
-        const bars = cachedBars ?? (await stockService.getOHLCV(ticker, timeframe, from, to));
-        if (!cachedBars && bars.length) {
-          database.saveOHLCVCache(barsCacheKey, ticker, timeframe, bars, barsTtlMs);
-        }
+        const bars = await fetchBarsWithFallbacks(ticker, timeframe, to);
         if (!bars.length) {
           throw new Error("No OHLCV data available for analysis");
         }

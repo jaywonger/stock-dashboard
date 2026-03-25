@@ -34,17 +34,25 @@ const timeframeMinutes: Record<Timeframe, number> = {
 
 export class MockAdapter implements StockDataProvider {
   id = "mock" as const;
+  private ensureSupportedSymbol(ticker: string): string {
+    const symbol = ticker.toUpperCase();
+    if (!COMPANIES[symbol]) {
+      throw new Error(`Mock data unavailable for symbol ${symbol}`);
+    }
+    return symbol;
+  }
 
   async getQuote(ticker: string): Promise<Quote> {
-    const seed = randomFromSymbol(ticker.toUpperCase());
+    const symbol = this.ensureSupportedSymbol(ticker);
+    const seed = randomFromSymbol(symbol);
     const base = 40 + seed * 400;
     const wave = Math.sin(Date.now() / 120000 + seed * 12) * 2.8;
     const price = Number((base + wave).toFixed(2));
     const change = Number((Math.sin(Date.now() / 400000 + seed * 5) * 3.1).toFixed(2));
     const changePercent = Number(((change / Math.max(base, 1)) * 100).toFixed(2));
     return {
-      symbol: ticker.toUpperCase(),
-      companyName: COMPANIES[ticker.toUpperCase()] ?? `${ticker.toUpperCase()} Holdings`,
+      symbol,
+      companyName: COMPANIES[symbol],
       price,
       change,
       changePercent,
@@ -54,7 +62,8 @@ export class MockAdapter implements StockDataProvider {
   }
 
   async getOHLCV(ticker: string, timeframe: Timeframe, from: Date, to: Date): Promise<OHLCV[]> {
-    const seed = randomFromSymbol(ticker.toUpperCase());
+    const symbol = this.ensureSupportedSymbol(ticker);
+    const seed = randomFromSymbol(symbol);
     const stepMinutes = timeframeMinutes[timeframe];
     const totalSteps = Math.max(30, Math.floor((to.getTime() - from.getTime()) / (stepMinutes * 60_000)));
     const bars: OHLCV[] = [];
