@@ -147,7 +147,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <h3 className="mb-2 font-semibold text-text-primary">Data Sources</h3>
           <p className="mb-3 text-sm text-text-muted">Provider fallback order: {providerOrder}</p>
           <div className="flex flex-wrap gap-2">
-            {["polygon", "finnhub", "alphaVantage", "yahoo", "mock"].map((provider) => (
+            {["yfinance", "polygon", "finnhub", "alphaVantage", "yahoo", "mock"].map((provider) => (
               <button
                 key={provider}
                 className="rounded border border-border px-3 py-1.5 text-sm text-text-muted hover:border-neutral hover:text-text-primary"

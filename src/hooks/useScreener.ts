@@ -25,6 +25,10 @@ export const useScreener = () => {
       setResults(payload.rows);
       return payload.rows;
     },
-    refetchInterval: refreshInterval
+    refetchInterval: refreshInterval,
+    staleTime: Math.max(30_000, Math.floor(refreshInterval * 0.8)),
+    gcTime: Math.max(5 * 60_000, refreshInterval * 3),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 };

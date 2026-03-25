@@ -2,7 +2,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import type { Server } from "node:http";
-import { buildProviders, FallbackStockDataService } from "../src/services/stockDataService";
+import { FallbackStockDataService } from "../src/services/stockDataService";
 import { createAlertsRouter } from "./routes/alerts";
 import { createAnalysisRouter } from "./routes/analysis";
 import { createMacroRouter } from "./routes/macro";
@@ -13,6 +13,7 @@ import { createScreenerRouter } from "./routes/screener";
 import { createSettingsRouter } from "./routes/settings";
 import { createWatchlistsRouter } from "./routes/watchlists";
 import { createAgentsRouter } from "./routes/agents";
+import { buildProviders } from "./services/providerFactory";
 
 dotenv.config();
 
@@ -23,6 +24,8 @@ app.use(express.json({ limit: "2mb" }));
 const port = Number(process.env.PORT ?? 3000);
 
 const providers = buildProviders({
+  yfinanceEnabled: String(process.env.YFINANCE_ENABLED ?? "true").toLowerCase() !== "false",
+  yfinancePython: process.env.YFINANCE_PYTHON,
   polygonApiKey: process.env.POLYGON_API_KEY,
   alphaVantageApiKey: process.env.ALPHA_VANTAGE_API_KEY,
   finnhubApiKey: process.env.FINNHUB_API_KEY

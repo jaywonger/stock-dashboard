@@ -41,7 +41,7 @@ export class HttpStockDataService implements StockDataProvider {
 
   async getQuote(ticker: string): Promise<Quote> {
     try {
-      return await this.getJson<Quote>(`${this.baseUrl}/quotes/${ticker.toUpperCase()}`);
+      return await this.getJson<Quote>(`${this.baseUrl}/quotes/${encodeURIComponent(ticker.toUpperCase())}`);
     } catch {
       return this.mock.getQuote(ticker);
     }
@@ -54,7 +54,7 @@ export class HttpStockDataService implements StockDataProvider {
       to: to.toISOString()
     });
     try {
-      return await this.getJson<OHLCV[]>(`${this.baseUrl}/ohlcv/${ticker.toUpperCase()}?${params}`);
+      return await this.getJson<OHLCV[]>(`${this.baseUrl}/ohlcv/${encodeURIComponent(ticker.toUpperCase())}?${params}`);
     } catch {
       return this.mock.getOHLCV(ticker, timeframe, from, to);
     }
@@ -146,12 +146,30 @@ export class FallbackStockDataService implements StockDataProvider {
     const ordered = this.getProviderOrder(operation);
     if (!ticker) return ordered;
     const symbol = ticker.toUpperCase();
-    const preferYahoo =
+    const preferGlobalProviders =
       ["VIX", "SPX", "GSPC", "NDX", "DJI", "RUT"].includes(symbol) ||
       symbol.startsWith("^") ||
-      symbol.includes(".");
-    if (!preferYahoo) return ordered;
-    return [...ordered].sort((a, b) => (a.id === "yahoo" ? -1 : b.id === "yahoo" ? 1 : 0));
+      symbol.includes(".") ||
+      /[0-9]/.test(symbol);
+    if (!preferGlobalProviders) return ordered;
+    return [...ordered].sort((a, b) => {
+      const rank = (id: string) => (id === "yfinance" ? 0 : id === "yahoo" ? 1 : 2);
+      return rank(a.id) - rank(b.id);
+    });
+  }
+
+  private getProviderOrderForSearch(query: string): StockDataProvider[] {
+    const ordered = this.getProviderOrder("search");
+    const normalized = query.trim().toUpperCase();
+    if (!normalized) return ordered;
+
+    // Symbols with digits or exchange suffixes are commonly non-US (for example: PETR4, PETR4.SA, 7203.T).
+    const likelyNonUs = /[.0-9]/.test(normalized);
+    if (!likelyNonUs) return ordered;
+    return [...ordered].sort((a, b) => {
+      const rank = (id: string) => (id === "yfinance" ? 0 : id === "yahoo" ? 1 : 2);
+      return rank(a.id) - rank(b.id);
+    });
   }
 
   private async tryProviders<T>(
@@ -251,7 +269,27 @@ export class FallbackStockDataService implements StockDataProvider {
   }
 
   async search(query: string): Promise<SearchResult[]> {
-    return this.tryProviders("search", (provider) => provider.search(query));
+    const normalized = query.trim();
+    if (!normalized) return [];
+
+    const bySymbol = new Map<string, SearchResult>();
+    for (const provider of this.getProviderOrderForSearch(normalized)) {
+      try {
+        const rows = await this.withTimeout(provider.id, provider.search(normalized));
+        this.markProviderResult(provider.id, true);
+        for (const row of rows) {
+          const symbol = row.symbol?.toUpperCase();
+          if (!symbol || bySymbol.has(symbol)) continue;
+          bySymbol.set(symbol, { ...row, symbol });
+          if (bySymbol.size >= 10) break;
+        }
+        if (bySymbol.size >= 10) break;
+      } catch {
+        this.markProviderResult(provider.id, false);
+      }
+    }
+
+    return Array.from(bySymbol.values()).slice(0, 10);
   }
 
   async getMarketStatus(): Promise<MarketStatus> {

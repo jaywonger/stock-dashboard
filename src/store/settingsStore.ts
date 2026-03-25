@@ -12,6 +12,7 @@ interface SettingsActions {
 
 const defaultSettings: SettingsState = {
   providerPriority: [
+    { id: "yfinance", enabled: true },
     { id: "polygon", enabled: true },
     { id: "finnhub", enabled: true },
     { id: "alphaVantage", enabled: true },

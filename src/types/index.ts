@@ -174,7 +174,7 @@ export interface ProviderPriority {
   enabled: boolean;
 }
 
-export type StockProviderId = "polygon" | "alphaVantage" | "finnhub" | "yahoo" | "mock";
+export type StockProviderId = "yfinance" | "polygon" | "alphaVantage" | "finnhub" | "yahoo" | "mock";
 
 export interface ProviderKeys {
   polygonApiKey?: string;

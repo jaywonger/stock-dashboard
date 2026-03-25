@@ -7,17 +7,22 @@ import "./styles/index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 15_000,
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnMount: false,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
       retry: 1
     }
   }
 });
 
+const appTree = (
+  <QueryClientProvider client={queryClient}>
+    <App />
+  </QueryClientProvider>
+);
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </React.StrictMode>
+  import.meta.env.DEV ? appTree : <React.StrictMode>{appTree}</React.StrictMode>
 );

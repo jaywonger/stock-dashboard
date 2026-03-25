@@ -19,15 +19,17 @@ function RowWithQuote({
   onSelect,
   onRemove,
   metricsBySymbol,
-  metricsLoading
+  metricsLoading,
+  quoteIntervalMs
 }: {
   item: WatchlistItem;
   onSelect: () => void;
   onRemove: () => void;
   metricsBySymbol: Record<string, WatchlistMetrics>;
   metricsLoading: boolean;
+  quoteIntervalMs: number;
 }) {
-  const quote = useQuote(item.symbol);
+  const quote = useQuote(item.symbol, { intervalMs: quoteIntervalMs });
   return (
     <WatchlistRow
       item={item}
@@ -61,6 +63,7 @@ export function WatchlistManager({ collapsed = false, embedded = false }: Watchl
   const symbols = activeWatchlist?.items.map((item) => item.symbol) ?? [];
   const metricsQuery = useWatchlistMetrics(symbols);
   const metricsBySymbol = Object.fromEntries((metricsQuery.data ?? []).map((row) => [row.symbol, row]));
+  const quoteIntervalMs = 120_000;
 
   useEffect(() => {
     if (!activeWatchlist && watchlists.length > 0) {
@@ -314,6 +317,7 @@ export function WatchlistManager({ collapsed = false, embedded = false }: Watchl
                   onRemove={() => void removeTicker(item.symbol)}
                   metricsBySymbol={metricsBySymbol}
                   metricsLoading={metricsQuery.isLoading}
+                  quoteIntervalMs={quoteIntervalMs}
                 />
               ))}
             </tbody>

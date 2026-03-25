@@ -24,7 +24,7 @@ export async function analyzeStock(
   timeframe = "1D"
 ): Promise<StockAnalysis | null> {
   try {
-    const response = await fetch(`${API_BASE}/analyze/${symbol}?timeframe=${timeframe}`, {
+    const response = await fetch(`${API_BASE}/analyze/${encodeURIComponent(symbol)}?timeframe=${encodeURIComponent(timeframe)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

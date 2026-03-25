@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Bell, ChevronLeftSquare, ChevronRightSquare, Settings, Bot } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useQuote } from "../../hooks/useQuote";
@@ -17,7 +17,7 @@ interface HeaderProps {
   onToggleAgentPanel?: () => void;
 }
 
-function GlobalTickerTile({ symbol }: { symbol: string }) {
+const GlobalTickerTile = memo(function GlobalTickerTile({ symbol }: { symbol: string }) {
   const setTicker = useMarketStore((state) => state.setSelectedTicker);
   const query = useQuote(symbol);
   if (query.isLoading || !query.data) {
@@ -33,7 +33,7 @@ function GlobalTickerTile({ symbol }: { symbol: string }) {
       <PriceChange change={query.data.change} changePercent={query.data.changePercent} compact />
     </button>
   );
-}
+});
 
 export function Header({ onOpenSettings, onToggleLeft, onToggleRight, onToggleAgentPanel }: HeaderProps) {
   const [clock, setClock] = useState(() => new Date());
@@ -42,11 +42,14 @@ export function Header({ onOpenSettings, onToggleLeft, onToggleRight, onToggleAg
   const marketStatus = useQuery({
     queryKey: ["market-status"],
     queryFn: () => stockService.getMarketStatus(),
-    refetchInterval: 60_000
+    refetchInterval: 60_000,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
   useEffect(() => {
-    const id = window.setInterval(() => setClock(new Date()), 1000);
+    const id = window.setInterval(() => setClock(new Date()), 30_000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -75,7 +78,9 @@ export function Header({ onOpenSettings, onToggleLeft, onToggleRight, onToggleAg
 
         <div className="ml-auto flex items-center gap-2">
           <div className="rounded-md border border-border bg-surface px-3 py-1.5 text-right">
-            <div className="ticker-font text-xs text-text-muted">{clock.toLocaleTimeString()}</div>
+            <div className="ticker-font text-xs text-text-muted">
+              {clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </div>
             <div className="text-xs font-medium text-text-primary">
               Session: <span className="ticker-font">{marketStatus.data?.session ?? "CLOSED"}</span>
             </div>

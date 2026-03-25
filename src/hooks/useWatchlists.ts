@@ -10,6 +10,9 @@ async function fetchWatchlists(): Promise<Watchlist[]> {
 export const useWatchlists = () =>
   useQuery({
     queryKey: ["watchlists"],
-    queryFn: fetchWatchlists
+    queryFn: fetchWatchlists,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
-

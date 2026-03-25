@@ -164,6 +164,8 @@ function extractSymbols(text: string): string[] {
   // Match common stock symbol patterns
   const patterns = [
     /\b[A-Z]{1,5}\b/g, // Standard symbols (AAPL, SPY)
+    /\b[A-Z]{1,10}\.[A-Z]{1,4}\b/g, // Exchange suffix symbols (PETR4.SA, 7203.T, RELIANCE.NS)
+    /\b[A-Z]{4}\d{1,2}\b/g, // BR-style class symbols without suffix (PETR4, VALE3)
     /\b[hkH][Kk]?[0-9]{4,5}\b/g, // HK stocks (hk00700, 00700)
     /\b[0-9]{6}\.(SH|SZ)\b/g, // China stocks (600519.SH)
   ];

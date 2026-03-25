@@ -61,7 +61,7 @@ export const useOHLCV = (ticker: string, timeframe: Timeframe) =>
       if (!chartRequest.bucketMinutes) return rows;
       return aggregateBars(rows, chartRequest.bucketMinutes);
     },
-    staleTime: 30_000,
+    staleTime: 2 * 60_000,
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,

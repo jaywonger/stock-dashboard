@@ -78,12 +78,21 @@ npm run dev
 
 Optional (dashboard still works with mock fallback):
 
+- `YFINANCE_ENABLED` (default `true`) - enables Python `yfinance` provider
+- `YFINANCE_PYTHON` (default `python`) - Python executable used for `yfinance` bridge
+- `YFINANCE_SYMBOL_SUFFIX_HINTS` (default `SA,T,HK,L,TO,NS,AX`) - suffix heuristics for bare non-US tickers
 - `POLYGON_API_KEY`
 - `ALPHA_VANTAGE_API_KEY`
 - `FINNHUB_API_KEY`
 - `NEWSAPI_KEY`
 - `BENZINGA_API_KEY`
 - `RSS_FEED_URLS`
+
+If you enable `yfinance`, install it in your Python environment first:
+
+```bash
+pip install yfinance
+```
 
 OpenInsider is also used for insider-trading context in analysis routes (no API key required):
 - `OPENINSIDER_ENABLED` (default `true`)
@@ -111,6 +120,7 @@ Configure in Settings modal or `.env` file.
 - Unified provider interface is defined in [`src/types/index.ts`](./src/types/index.ts).
 - Fallback chain is managed in [`src/services/stockDataService.ts`](./src/services/stockDataService.ts).
 - Implemented provider adapters:
+  - [`server/services/yfinanceAdapter.ts`](./server/services/yfinanceAdapter.ts) + [`server/python/yfinance_bridge.py`](./server/python/yfinance_bridge.py)
   - [`src/services/providers/polygonAdapter.ts`](./src/services/providers/polygonAdapter.ts)
   - [`src/services/providers/alphaVantageAdapter.ts`](./src/services/providers/alphaVantageAdapter.ts)
   - [`src/services/providers/finnhubAdapter.ts`](./src/services/providers/finnhubAdapter.ts)

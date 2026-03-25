@@ -9,6 +9,7 @@ interface WatchlistMetricsResponse {
 export const useWatchlistMetrics = (symbols: string[]) => {
   const refreshInterval = useSettingsStore((state) => state.refreshIntervals.marketData);
   const normalized = symbols.map((s) => s.toUpperCase()).filter(Boolean);
+  const metricsInterval = Math.max(120_000, refreshInterval * 2);
 
   return useQuery({
     queryKey: ["watchlist-metrics", [...normalized].sort().join(",")],
@@ -24,9 +25,10 @@ export const useWatchlistMetrics = (symbols: string[]) => {
       return payload.rows ?? [];
     },
     enabled: normalized.length > 0,
-    refetchInterval: refreshInterval,
-    staleTime: Math.max(5_000, Math.floor(refreshInterval * 0.8)),
-    gcTime: Math.max(30_000, refreshInterval * 3)
+    refetchInterval: metricsInterval,
+    staleTime: Math.max(10_000, Math.floor(metricsInterval * 0.8)),
+    gcTime: Math.max(60_000, metricsInterval * 3),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 };
-

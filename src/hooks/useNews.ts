@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { useNewsStore } from "../store/newsStore";
 import { useSettingsStore } from "../store/settingsStore";
 
@@ -11,7 +12,7 @@ interface NewsResponse {
 export const useNews = (ticker?: string) => {
   const interval = useSettingsStore((state) => state.refreshIntervals.news);
   const setNews = useNewsStore((state) => state.setNews);
-  const jitterMs = Math.floor(Math.random() * 15_000);
+  const jitterMs = useMemo(() => Math.floor(Math.random() * 15_000), []);
   return useQuery({
     queryKey: ["news", ticker],
     queryFn: async () => {
@@ -30,6 +31,10 @@ export const useNews = (ticker?: string) => {
       if (!data || data.articles.length === 0) return 10_000;
       return Math.max(60_000, interval + jitterMs);
     },
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: 1
   });
 };

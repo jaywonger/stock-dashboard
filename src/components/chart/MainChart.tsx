@@ -9,7 +9,7 @@ import {
   createChart
 } from "lightweight-charts";
 import type { Time } from "lightweight-charts";
-import type { ChartType, Timeframe } from "../../types";
+import type { ChartType, OHLCV, Timeframe } from "../../types";
 import { useOHLCV } from "../../hooks/useOHLCV";
 import {
   calculateEMA,
@@ -57,6 +57,7 @@ const toChartTime = (value: string): Time => {
 
 export function MainChart({ ticker, timeframe, chartType, compareTicker, activeIndicators }: MainChartProps) {
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const lastHoverKeyRef = useRef<string>("");
   const [hoverState, setHoverState] = useState<HoverState>({});
   const query = useOHLCV(ticker, timeframe);
   const compareQuery = useOHLCV(compareTicker ?? "", timeframe);
@@ -69,6 +70,14 @@ export function MainChart({ ticker, timeframe, chartType, compareTicker, activeI
       { label: "SMA20", value: latestSeriesValue(calculateSMA(query.data, 20)) },
       { label: "EMA20", value: latestSeriesValue(calculateEMA(query.data, 20)) }
     ];
+  }, [query.data]);
+
+  const candleLookup = useMemo(() => {
+    const map = new Map<number, OHLCV>();
+    for (const row of query.data ?? []) {
+      map.set(Number(toChartTime(row.time)), row);
+    }
+    return map;
   }, [query.data]);
 
   useEffect(() => {
@@ -192,8 +201,11 @@ export function MainChart({ ticker, timeframe, chartType, compareTicker, activeI
       if (!time) return;
       const timeKey = typeof time === "number" ? time : Number.NaN;
       if (!Number.isFinite(timeKey)) return;
-      const candle = query.data.find((item) => Number(toChartTime(item.time)) === timeKey);
+      const candle = candleLookup.get(timeKey);
       if (!candle) return;
+      const nextKey = `${timeKey}:${candle.close}:${candle.volume}`;
+      if (lastHoverKeyRef.current === nextKey) return;
+      lastHoverKeyRef.current = nextKey;
       setHoverState({
         open: candle.open,
         high: candle.high,
@@ -204,7 +216,7 @@ export function MainChart({ ticker, timeframe, chartType, compareTicker, activeI
     });
 
     return () => chart.remove();
-  }, [activeIndicators, chartType, compareQuery.data, compareTicker, query.data]);
+  }, [activeIndicators, candleLookup, chartType, compareQuery.data, compareTicker, query.data]);
 
   if (query.isLoading) {
     return (

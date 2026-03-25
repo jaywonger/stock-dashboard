@@ -8,6 +8,7 @@ import type {
   AnalystView,
   DailyDecisionDashboard,
   NewsArticle,
+  Quote,
   NewsTeamAnalysisReport,
   OHLCV,
   StockDataProvider,
@@ -74,6 +75,20 @@ const parseAnalysisDate = (value: string | undefined): string => {
   if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
   return date.toISOString().slice(0, 10);
 };
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 
 const buildDecision = (
   ticker: string,
@@ -252,6 +267,37 @@ const buildFallbackCommentary = (report: DailyDecisionDashboard): string => {
         : `Wait for confirmation around ${report.levels.entryMin}-${report.levels.entryMax} before increasing directional exposure.`;
 
   return `${report.conclusion} ${riskWarning} ${executionTip}`;
+};
+
+const buildFlatBarsFromQuote = (quote: Quote, to: Date, timeframe: Timeframe): OHLCV[] => {
+  const count = timeframe === "1m" || timeframe === "5m" || timeframe === "15m" ? 80 : 90;
+  const stepMs =
+    timeframe === "1m"
+      ? 60_000
+      : timeframe === "5m"
+        ? 5 * 60_000
+        : timeframe === "15m"
+          ? 15 * 60_000
+          : timeframe === "1h"
+            ? 60 * 60_000
+            : timeframe === "4h"
+              ? 4 * 60 * 60_000
+              : 24 * 60 * 60_000;
+  const prevClose = quote.price - quote.change;
+  const basePrice = Number.isFinite(prevClose) && prevClose > 0 ? prevClose : quote.price;
+  const rows: OHLCV[] = [];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const time = new Date(to.getTime() - i * stepMs).toISOString();
+    rows.push({
+      time,
+      open: basePrice,
+      high: Math.max(basePrice, quote.price),
+      low: Math.min(basePrice, quote.price),
+      close: quote.price,
+      volume: Math.max(0, quote.volume ?? 0)
+    });
+  }
+  return rows;
 };
 
 const buildTeamViews = (ticker: string, bars: OHLCV[], articles: NewsArticle[], newsScore: number): AnalystView[] => {
@@ -659,7 +705,7 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
 
   router.get("/daily", async (req, res) => {
     try {
-      const ticker = String(req.query.ticker ?? "").toUpperCase();
+      const ticker = String(req.query.ticker ?? "").toUpperCase().trim();
       if (!ticker) return res.status(400).json({ error: "ticker is required" });
 
       const timeframe = normalizeTimeframe(req.query.timeframe);
@@ -674,10 +720,15 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
       const to = new Date();
 
       const task = (async () => {
-        const bars = await fetchBarsWithFallbacks(ticker, timeframe, to);
-        if (!bars.length) {
-          throw new Error("No OHLCV data available for analysis");
+        let bars: OHLCV[] = [];
+        try {
+          bars = await fetchBarsWithFallbacks(ticker, timeframe, to);
+        } catch {
+          // Fallback for symbols/timeframes where candle history can be intermittent.
+          const quote = await stockService.getQuote(ticker);
+          bars = buildFlatBarsFromQuote(quote, to, timeframe);
         }
+        if (!bars.length) throw new Error("No OHLCV data available for analysis");
 
         const newsCacheKey = `news:${ticker}`;
         const cachedNews = database.getNewsCache<{
@@ -717,7 +768,11 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
           insiderActivity,
           insiderScoreWeight
         );
-        const commentary = await maybeGenerateCommentary(config, report);
+        const commentary: { text?: string; provider?: string } = await withTimeout(
+          maybeGenerateCommentary(config, report),
+          20_000,
+          "AI commentary timed out"
+        ).catch(() => ({}));
         report.aiCommentary = commentary.text ?? buildFallbackCommentary(report);
         report.aiProvider = commentary.provider ?? "rule-based";
         analysisCache.set(analysisKey, { data: report, cachedAt: Date.now() });
@@ -734,7 +789,7 @@ export const createAnalysisRouter = (stockService: StockDataProvider, config: An
 
   router.get("/news-team", async (req, res) => {
     try {
-      const ticker = String(req.query.ticker ?? "").toUpperCase();
+      const ticker = String(req.query.ticker ?? "").toUpperCase().trim();
       if (!ticker) return res.status(400).json({ error: "ticker is required" });
       const timeframe = String(req.query.timeframe ?? "1D") as Timeframe;
       const rounds = clamp(Number(req.query.rounds ?? 3), 1, 5);
