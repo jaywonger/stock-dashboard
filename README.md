@@ -90,6 +90,7 @@ OpenInsider is also used for insider-trading context in analysis routes (no API 
 - `OPENINSIDER_LOOKBACK_DAYS` (default `30`)
 - `OPENINSIDER_TIMEOUT_MS` (default `8000`)
 - `OPENINSIDER_SCORE_WEIGHT` (default `1.4`, allowed `0.2` to `3.0`)
+- `OPENINSIDER_DEBUG` (default `false`, logs scraper fetch/parse details to server console)
 
 ### AI Agent API Keys (Optional)
 

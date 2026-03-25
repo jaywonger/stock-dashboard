@@ -1,8 +1,10 @@
-import { useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileUp, Plus } from "lucide-react";
-import type { Watchlist, WatchlistItem } from "../../types";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Download, FileUp, Plus, Trash2 } from "lucide-react";
+import type { WatchlistItem, WatchlistMetrics } from "../../types";
 import { useQuote } from "../../hooks/useQuote";
+import { useWatchlists } from "../../hooks/useWatchlists";
+import { useWatchlistMetrics } from "../../hooks/useWatchlistMetrics";
 import { useMarketStore } from "../../store/marketStore";
 import { Skeleton } from "../shared/Skeleton";
 import { WatchlistRow } from "./WatchlistRow";
@@ -12,64 +14,133 @@ interface WatchlistManagerProps {
   embedded?: boolean;
 }
 
-async function fetchWatchlists(): Promise<Watchlist[]> {
-  const response = await fetch("/api/watchlists");
-  if (!response.ok) throw new Error("Failed to load watchlists");
-  return response.json();
-}
-
 function RowWithQuote({
   item,
   onSelect,
-  onRemove
+  onRemove,
+  metricsBySymbol,
+  metricsLoading
 }: {
   item: WatchlistItem;
   onSelect: () => void;
   onRemove: () => void;
+  metricsBySymbol: Record<string, WatchlistMetrics>;
+  metricsLoading: boolean;
 }) {
   const quote = useQuote(item.symbol);
-  return <WatchlistRow item={item} quote={quote.data} onClick={onSelect} onRemove={onRemove} />;
+  return (
+    <WatchlistRow
+      item={item}
+      quote={quote.data}
+      quoteLoading={quote.isLoading}
+      metrics={metricsBySymbol[item.symbol]}
+      metricsLoading={metricsLoading}
+      onClick={onSelect}
+      onRemove={onRemove}
+    />
+  );
 }
 
 export function WatchlistManager({ collapsed = false, embedded = false }: WatchlistManagerProps) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const setTicker = useMarketStore((state) => state.setSelectedTicker);
-  const [activeWatchlistId, setActiveWatchlistId] = useState<number | null>(null);
+  const activeWatchlistId = useMarketStore((state) => state.activeWatchlistId);
+  const setActiveWatchlistId = useMarketStore((state) => state.setActiveWatchlistId);
+  const setWatchlistName = useMarketStore((state) => state.setWatchlistName);
   const [newSymbol, setNewSymbol] = useState("");
   const [newWatchlistName, setNewWatchlistName] = useState("");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<"ok" | "error">("ok");
 
-  const watchlistsQuery = useQuery({
-    queryKey: ["watchlists"],
-    queryFn: fetchWatchlists
-  });
+  const watchlistsQuery = useWatchlists();
 
   const watchlists = watchlistsQuery.data ?? [];
   const activeWatchlist =
     watchlists.find((watchlist) => watchlist.id === activeWatchlistId) ?? watchlists[0] ?? null;
+  const symbols = activeWatchlist?.items.map((item) => item.symbol) ?? [];
+  const metricsQuery = useWatchlistMetrics(symbols);
+  const metricsBySymbol = Object.fromEntries((metricsQuery.data ?? []).map((row) => [row.symbol, row]));
+
+  useEffect(() => {
+    if (!activeWatchlist && watchlists.length > 0) {
+      setActiveWatchlistId(watchlists[0].id);
+      setWatchlistName(watchlists[0].name);
+      return;
+    }
+    if (activeWatchlist) {
+      setWatchlistName(activeWatchlist.name);
+    }
+  }, [activeWatchlist, setActiveWatchlistId, setWatchlistName, watchlists]);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["watchlists"] });
 
   const addWatchlist = async () => {
-    if (!newWatchlistName.trim()) return;
-    await fetch("/api/watchlists", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newWatchlistName.trim() })
-    });
-    setNewWatchlistName("");
-    refresh();
+    const name = newWatchlistName.trim();
+    if (!name) return;
+    setStatusMessage(null);
+    try {
+      const response = await fetch("/api/watchlists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({ error: "Create watchlist failed" }))) as { error?: string };
+        setStatusTone("error");
+        setStatusMessage(payload.error ?? "Create watchlist failed");
+        return;
+      }
+      const payload = (await response.json()) as { id: number };
+      setNewWatchlistName("");
+      setActiveWatchlistId(payload.id);
+      const refreshed = await watchlistsQuery.refetch();
+      const created = (refreshed.data ?? []).find((item) => item.id === payload.id);
+      if (created) setWatchlistName(created.name);
+      setStatusTone("ok");
+      setStatusMessage(`Created watchlist "${name}"`);
+    } catch {
+      setStatusTone("error");
+      setStatusMessage("Create watchlist failed");
+    }
+  };
+
+  const deleteWatchlist = async () => {
+    if (!activeWatchlist) return;
+    const ok = window.confirm(`Delete watchlist "${activeWatchlist.name}"?`);
+    if (!ok) return;
+    const response = await fetch(`/api/watchlists/${activeWatchlist.id}`, { method: "DELETE" });
+    if (!response.ok) return;
+    await refresh();
+    const next = (watchlistsQuery.data ?? []).find((item) => item.id !== activeWatchlist.id) ?? null;
+    setActiveWatchlistId(next?.id ?? null);
+    setWatchlistName(next?.name ?? "Default");
   };
 
   const addTicker = async () => {
     if (!activeWatchlist || !newSymbol.trim()) return;
-    await fetch(`/api/watchlists/${activeWatchlist.id}/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol: newSymbol.trim().toUpperCase() })
-    });
-    setNewSymbol("");
-    refresh();
+    const symbol = newSymbol.trim().toUpperCase();
+    setStatusMessage(null);
+    try {
+      const response = await fetch(`/api/watchlists/${activeWatchlist.id}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol })
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({ error: "Add ticker failed" }))) as { error?: string };
+        setStatusTone("error");
+        setStatusMessage(payload.error ?? "Add ticker failed");
+        return;
+      }
+      setNewSymbol("");
+      setStatusTone("ok");
+      setStatusMessage(`Added ${symbol} to ${activeWatchlist.name}`);
+      await watchlistsQuery.refetch();
+    } catch {
+      setStatusTone("error");
+      setStatusMessage("Add ticker failed");
+    }
   };
 
   const removeTicker = async (symbol: string) => {
@@ -138,11 +209,27 @@ export function WatchlistManager({ collapsed = false, embedded = false }: Watchl
           <Plus size={14} />
         </button>
       </div>
+      {statusMessage && (
+        <div
+          className={`mb-3 rounded border p-2 text-xs ${
+            statusTone === "ok"
+              ? "border-bullish/30 bg-bullish/10 text-bullish"
+              : "border-bearish/30 bg-bearish/10 text-bearish"
+          }`}
+        >
+          {statusMessage}
+        </div>
+      )}
 
       <div className="mb-3">
         <select
           value={activeWatchlist?.id ?? ""}
-          onChange={(event) => setActiveWatchlistId(Number(event.target.value))}
+          onChange={(event) => {
+            const id = Number(event.target.value);
+            const next = watchlists.find((watchlist) => watchlist.id === id) ?? null;
+            setActiveWatchlistId(id);
+            setWatchlistName(next?.name ?? "Default");
+          }}
           className="w-full rounded border border-border bg-base px-2 py-1.5 text-sm text-text-primary"
         >
           {watchlists.map((watchlist) => (
@@ -176,6 +263,14 @@ export function WatchlistManager({ collapsed = false, embedded = false }: Watchl
           <FileUp size={12} className="mr-1 inline" /> Import
         </button>
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(event) => void importCsv(event)} />
+        <button
+          className="ml-auto rounded border border-bearish/40 px-2 py-1 text-xs text-bearish hover:bg-bearish/10"
+          onClick={() => void deleteWatchlist()}
+          disabled={(watchlists.length || 0) <= 1}
+          title={(watchlists.length || 0) <= 1 ? "At least one watchlist is required" : "Delete active watchlist"}
+        >
+          <Trash2 size={12} className="mr-1 inline" /> Delete
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -195,15 +290,34 @@ export function WatchlistManager({ collapsed = false, embedded = false }: Watchl
             No symbols yet. Add a ticker above or import CSV.
           </div>
         )}
-        <div className="space-y-1">
-          {activeWatchlist?.items.map((item) => (
-            <RowWithQuote
-              key={item.symbol}
-              item={item}
-              onSelect={() => setTicker(item.symbol)}
-              onRemove={() => void removeTicker(item.symbol)}
-            />
-          ))}
+        <div className="overflow-auto rounded border border-border bg-base">
+          <table className="w-full min-w-[720px] border-collapse text-xs">
+            <thead className="sticky top-0 bg-panel">
+              <tr>
+                <th className="border-b border-border px-2 py-2 text-left text-text-muted">Ticker</th>
+                <th className="border-b border-border px-2 py-2 text-left text-text-muted">Company</th>
+                <th className="border-b border-border px-2 py-2 text-right text-text-muted">Price</th>
+                <th className="border-b border-border px-2 py-2 text-right text-text-muted">Change%</th>
+                <th className="border-b border-border px-2 py-2 text-right text-text-muted">Volume</th>
+                <th className="border-b border-border px-2 py-2 text-right text-text-muted">Rel.Vol</th>
+                <th className="border-b border-border px-2 py-2 text-right text-text-muted">RSI</th>
+                <th className="border-b border-border px-2 py-2 text-right text-text-muted">MACD</th>
+                <th className="border-b border-border px-2 py-2 text-left text-text-muted">Sector</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeWatchlist?.items.map((item) => (
+                <RowWithQuote
+                  key={item.symbol}
+                  item={item}
+                  onSelect={() => setTicker(item.symbol)}
+                  onRemove={() => void removeTicker(item.symbol)}
+                  metricsBySymbol={metricsBySymbol}
+                  metricsLoading={metricsQuery.isLoading}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

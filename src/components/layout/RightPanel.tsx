@@ -11,7 +11,8 @@ import { useState } from "react";
 import { NewsFeed } from "../news/NewsFeed";
 import { ChatAgent } from "../agents/ChatAgent";
 import { MonitorAgent } from "../agents/MonitorAgent";
-import { DEFAULT_TICKERS, useMarketStore } from "../../store/marketStore";
+import { useWatchlists } from "../../hooks/useWatchlists";
+import { useMarketStore } from "../../store/marketStore";
 
 type RightPanelTab = "news" | "ai" | "monitor";
 
@@ -22,7 +23,12 @@ interface RightPanelProps {
 export function RightPanel({ collapsed }: RightPanelProps) {
   const [activeTab, setActiveTab] = useState<RightPanelTab>("news");
   const selectedTicker = useMarketStore((state) => state.selectedTicker);
-  const watchlist = Array.from(new Set([selectedTicker, ...DEFAULT_TICKERS]));
+  const activeWatchlistId = useMarketStore((state) => state.activeWatchlistId);
+  const watchlistsQuery = useWatchlists();
+  const watchlists = watchlistsQuery.data ?? [];
+  const activeWatchlist = watchlists.find((item) => item.id === activeWatchlistId) ?? watchlists[0] ?? null;
+  const watchlistSymbols = activeWatchlist?.items.map((item) => item.symbol) ?? [];
+  const watchlist = Array.from(new Set([selectedTicker, ...watchlistSymbols]));
 
   if (collapsed) return null;
 

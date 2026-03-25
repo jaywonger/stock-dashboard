@@ -20,6 +20,17 @@ export const createWatchlistsRouter = (stockService: StockDataProvider) => {
     }
   });
 
+  router.delete("/:id", (req, res) => {
+    const watchlistId = Number(req.params.id);
+    if (!watchlistId) return res.status(400).json({ error: "watchlist id required" });
+    try {
+      database.deleteWatchlist(watchlistId);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Delete watchlist failed" });
+    }
+  });
+
   router.post("/:id/items", async (req, res) => {
     const watchlistId = Number(req.params.id);
     const symbol = String(req.body?.symbol ?? "").toUpperCase().trim();

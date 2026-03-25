@@ -161,6 +161,14 @@ export interface ScreenerRow {
   sparkline: number[];
 }
 
+export interface WatchlistMetrics {
+  symbol: string;
+  relativeVolume: number | null;
+  rsi: number | null;
+  macd: number | null;
+  sector: string;
+}
+
 export interface ProviderPriority {
   id: StockProviderId;
   enabled: boolean;

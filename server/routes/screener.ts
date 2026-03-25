@@ -1,5 +1,12 @@
 import { Router } from "express";
-import type { BasicScreenerFilters, ScreenerConfig, ScreenerOperator, ScreenerRow, StockDataProvider } from "../../src/types";
+import type {
+  BasicScreenerFilters,
+  ScreenerConfig,
+  ScreenerOperator,
+  ScreenerRow,
+  StockDataProvider,
+  WatchlistMetrics
+} from "../../src/types";
 import {
   calculateATR,
   calculateBollingerBands,
@@ -257,6 +264,59 @@ export const createScreenerRouter = (stockService: StockDataProvider) => {
       res.json({ rows });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Screener run failed" });
+    }
+  });
+
+  router.post("/metrics", async (req, res) => {
+    try {
+      const symbols: string[] = Array.isArray(req.body?.symbols)
+        ? req.body.symbols
+            .map((value: unknown) => String(value ?? "").toUpperCase().trim())
+            .filter((value: string) => Boolean(value))
+        : [];
+      if (symbols.length === 0) return res.json({ rows: [] as WatchlistMetrics[] });
+
+      const uniqueSymbols: string[] = Array.from(new Set<string>(symbols));
+      const to = new Date();
+      const from = new Date();
+      from.setDate(to.getDate() - 380);
+
+      const rows = (
+        await Promise.all(
+          uniqueSymbols.map(async (symbol) => {
+            try {
+              const [quote, ohlcv] = await Promise.all([
+                stockService.getQuote(symbol),
+                stockService.getOHLCV(symbol, "1D", from, to)
+              ]);
+              if (!ohlcv.length) return null;
+
+              const volume = ohlcv.at(-1)?.volume ?? quote.volume ?? 0;
+              const avgVol30 =
+                ohlcv.slice(-30).reduce((sum, row) => sum + row.volume, 0) / Math.max(ohlcv.slice(-30).length, 1);
+              const relVol = avgVol30 ? volume / avgVol30 : null;
+
+              const rsiSeries = calculateRSI(ohlcv, 14);
+              const macdSeries = calculateMACD(ohlcv);
+
+              const row: WatchlistMetrics = {
+                symbol,
+                relativeVolume: relVol,
+                rsi: rsiSeries.at(-1)?.value ?? null,
+                macd: macdSeries.at(-1)?.macd ?? null,
+                sector: "Technology"
+              };
+              return row;
+            } catch {
+              return null;
+            }
+          })
+        )
+      ).filter((row): row is WatchlistMetrics => Boolean(row));
+
+      res.json({ rows });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Watchlist metrics failed" });
     }
   });
 

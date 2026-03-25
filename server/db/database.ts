@@ -6,6 +6,7 @@ import type { OHLCV, PriceAlert, ScreenerConfig, Watchlist, WatchlistItem } from
 type DatabaseApi = {
   getWatchlists(): Watchlist[];
   createWatchlist(name: string): number;
+  deleteWatchlist(id: number): void;
   addWatchlistItem(watchlistId: number, symbol: string, companyName: string): void;
   removeWatchlistItem(watchlistId: number, symbol: string): void;
   saveScreenerPreset(name: string, config: ScreenerConfig): void;
@@ -103,6 +104,13 @@ const createInMemoryDatabase = (): DatabaseApi => {
       watchlists.set(id, { id, name, createdAt: nowIso(), updatedAt: nowIso() });
       watchlistItems.set(id, new Map());
       return id;
+    },
+
+    deleteWatchlist(id: number): void {
+      if (!watchlists.has(id)) return;
+      if (watchlists.size <= 1) throw new Error("Cannot delete the last watchlist");
+      watchlists.delete(id);
+      watchlistItems.delete(id);
     },
 
     addWatchlistItem(watchlistId: number, symbol: string, companyName: string): void {
@@ -280,6 +288,12 @@ const createSqliteDatabase = (): DatabaseApi => {
     createWatchlist(name: string): number {
       const result = db.prepare("INSERT INTO watchlists (name, updated_at) VALUES (?, datetime('now'))").run(name);
       return Number(result.lastInsertRowid);
+    },
+
+    deleteWatchlist(id: number): void {
+      const row = db.prepare("SELECT COUNT(*) AS count FROM watchlists").get() as { count: number };
+      if (row.count <= 1) throw new Error("Cannot delete the last watchlist");
+      db.prepare("DELETE FROM watchlists WHERE id = ?").run(id);
     },
 
     addWatchlistItem(watchlistId: number, symbol: string, companyName: string): void {

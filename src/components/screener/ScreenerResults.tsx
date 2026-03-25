@@ -3,9 +3,9 @@ import { useScreener } from "../../hooks/useScreener";
 import { formatCompactNumber, formatPercent, formatPrice } from "../../lib/formatters";
 import { useMarketStore } from "../../store/marketStore";
 import { useScreenerStore } from "../../store/screenerStore";
+import { useSettingsStore } from "../../store/settingsStore";
 import type { ScreenerRow } from "../../types";
 import { Skeleton } from "../shared/Skeleton";
-import { Sparkline } from "../watchlist/Sparkline";
 
 const columnLabels: Record<keyof ScreenerRow, string> = {
   symbol: "Ticker",
@@ -30,7 +30,13 @@ export function ScreenerResults({ onSelectTicker }: ScreenerResultsProps = {}) {
   const setTicker = useMarketStore((state) => state.setSelectedTicker);
   const selectTicker = onSelectTicker ?? setTicker;
   const { visibleColumns, sortBy, sortDirection, setSort, results } = useScreenerStore();
+  const refreshIntervalMs = useSettingsStore((state) => state.refreshIntervals.screener);
   const query = useScreener();
+  const displayColumns = visibleColumns.filter((column) => column !== "sparkline");
+  const refreshLabel =
+    refreshIntervalMs >= 60_000 && refreshIntervalMs % 60_000 === 0
+      ? `${refreshIntervalMs / 60_000}m`
+      : `${Math.round(refreshIntervalMs / 1000)}s`;
 
   const sortedRows = useMemo(() => {
     const rows = [...results];
@@ -64,7 +70,7 @@ export function ScreenerResults({ onSelectTicker }: ScreenerResultsProps = {}) {
       case "activeSignals":
         return <span className="text-xs text-text-muted">{row.activeSignals.join(", ") || "-"}</span>;
       case "sparkline":
-        return <Sparkline values={row.sparkline} width={70} height={20} />;
+        return null;
       default:
         return <span>{String(row[column] ?? "-")}</span>;
     }
@@ -72,9 +78,9 @@ export function ScreenerResults({ onSelectTicker }: ScreenerResultsProps = {}) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-text-primary">Screener Results</h2>
-        <p className="text-xs text-text-muted">Refresh interval from settings</p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="min-w-0 text-sm font-semibold text-text-primary">Screener Results</h2>
+        <p className="shrink-0 text-xs text-text-muted">Refresh {refreshLabel}</p>
       </div>
 
       {query.isLoading && (
@@ -100,7 +106,7 @@ export function ScreenerResults({ onSelectTicker }: ScreenerResultsProps = {}) {
           <table className="w-full min-w-[960px] border-collapse text-xs">
             <thead className="sticky top-0 bg-panel">
               <tr>
-                {visibleColumns.map((column) => (
+                {displayColumns.map((column) => (
                   <th key={column} className="cursor-pointer border-b border-border px-2 py-2 text-left text-text-muted" onClick={() => setSort(column)}>
                     {columnLabels[column]}
                   </th>
@@ -118,7 +124,7 @@ export function ScreenerResults({ onSelectTicker }: ScreenerResultsProps = {}) {
                     alert(`Actions: Add ${row.symbol} to watchlist, set alert, or view news.`);
                   }}
                 >
-                  {visibleColumns.map((column) => (
+                  {displayColumns.map((column) => (
                     <td key={`${row.symbol}-${column}`} className="px-2 py-2 align-middle text-text-primary">
                       {renderCell(row, column)}
                     </td>
@@ -132,4 +138,3 @@ export function ScreenerResults({ onSelectTicker }: ScreenerResultsProps = {}) {
     </div>
   );
 }
-

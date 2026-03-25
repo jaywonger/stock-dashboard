@@ -42,8 +42,7 @@ const defaultColumns: Array<keyof ScreenerRow> = [
   "macd",
   "activeSignals",
   "sector",
-  "marketCap",
-  "sparkline"
+  "marketCap"
 ];
 
 export const useScreenerStore = create<ScreenerState & ScreenerActions>((set, get) => ({

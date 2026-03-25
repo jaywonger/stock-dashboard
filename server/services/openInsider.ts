@@ -15,6 +15,14 @@ export interface OpenInsiderSummary {
   asOf: string;
 }
 
+const isOpenInsiderDebugEnabled = (): boolean => (process.env.OPENINSIDER_DEBUG ?? "false").toLowerCase() === "true";
+const openInsiderDebug = (message: string, details?: Record<string, unknown>) => {
+  if (!isOpenInsiderDebugEnabled()) return;
+  const suffix = details ? ` ${JSON.stringify(details)}` : "";
+  // eslint-disable-next-line no-console
+  console.log(`[openinsider] ${message}${suffix}`);
+};
+
 interface ParsedTrade {
   tradeType: string;
   value: number;
@@ -40,11 +48,14 @@ const parseNumber = (input: string): number => {
 };
 
 const parseTradesFromHtml = (html: string): ParsedTrade[] => {
+  const tableMatch = html.match(/<table[^>]*class="[^"]*tinytable[^"]*"[^>]*>([\s\S]*?)<\/table>/i);
+  const scope = tableMatch?.[1] ?? html;
   const trades: ParsedTrade[] = [];
   const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   let rowMatch: RegExpExecArray | null = null;
-  while ((rowMatch = rowRegex.exec(html)) !== null) {
+  while ((rowMatch = rowRegex.exec(scope)) !== null) {
     const row = rowMatch[1];
+    if (/<th[\s>]/i.test(row)) continue;
     const cols = Array.from(row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((match) => stripTags(match[1]));
     if (cols.length < 12) continue;
     const tradeType = cols[6] ?? "";
@@ -111,23 +122,52 @@ export async function fetchOpenInsiderSummary(ticker: string): Promise<OpenInsid
   const timeoutMs = Number(process.env.OPENINSIDER_TIMEOUT_MS ?? 8_000);
   const days = Math.max(1, Number(process.env.OPENINSIDER_LOOKBACK_DAYS ?? 30));
   const safeTicker = encodeURIComponent(ticker.toUpperCase());
-  const sourceUrl = `http://openinsider.com/screener?s=${safeTicker}&fd=${days}&td=0&xp=1&xs=1`;
+  const sourceUrls = [
+    `https://openinsider.com/screener?s=${safeTicker}&fd=${days}&td=0&xp=1&xs=1`,
+    `http://openinsider.com/screener?s=${safeTicker}&fd=${days}&td=0&xp=1&xs=1`
+  ];
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(sourceUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "stocks-dashboard/0.1",
-        Accept: "text/html,application/xhtml+xml"
+    for (const sourceUrl of sourceUrls) {
+      openInsiderDebug("fetch:start", { ticker: ticker.toUpperCase(), sourceUrl });
+      const response = await fetch(sourceUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9"
+        }
+      });
+      if (!response.ok) {
+        openInsiderDebug("fetch:non_ok", { sourceUrl, status: response.status, statusText: response.statusText });
+        continue;
       }
+      const html = await response.text();
+      openInsiderDebug("fetch:ok", { sourceUrl, htmlLength: html.length });
+      const trades = parseTradesFromHtml(html);
+      openInsiderDebug("parse:rows", { sourceUrl, tradesFound: trades.length });
+      const summary = buildSummary(ticker.toUpperCase(), trades, sourceUrl);
+      if (summary) {
+        openInsiderDebug("summary:built", {
+          ticker: summary.ticker,
+          signal: summary.signal,
+          tradesFound: summary.tradesFound,
+          netValue: summary.netValue,
+          sourceUrl
+        });
+        return summary;
+      }
+      openInsiderDebug("summary:empty", { sourceUrl, ticker: ticker.toUpperCase() });
+    }
+    openInsiderDebug("fetch:all_sources_exhausted", { ticker: ticker.toUpperCase() });
+    return undefined;
+  } catch (error) {
+    openInsiderDebug("fetch:error", {
+      ticker: ticker.toUpperCase(),
+      message: error instanceof Error ? error.message : String(error)
     });
-    if (!response.ok) return undefined;
-    const html = await response.text();
-    const trades = parseTradesFromHtml(html);
-    return buildSummary(ticker.toUpperCase(), trades, sourceUrl);
-  } catch {
     return undefined;
   } finally {
     clearTimeout(timer);

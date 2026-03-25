@@ -1,21 +1,36 @@
-import type { Quote, WatchlistItem } from "../../types";
-import { formatPrice, formatPercent } from "../../lib/formatters";
-import { Sparkline } from "./Sparkline";
+import type { Quote, WatchlistItem, WatchlistMetrics } from "../../types";
+import { formatCompactNumber, formatPercent, formatPrice } from "../../lib/formatters";
 
 interface WatchlistRowProps {
   item: WatchlistItem;
   quote?: Quote;
+  quoteLoading?: boolean;
+  metrics?: WatchlistMetrics;
+  metricsLoading?: boolean;
   onClick: () => void;
   onRemove: () => void;
 }
 
-export function WatchlistRow({ item, quote, onClick, onRemove }: WatchlistRowProps) {
+export function WatchlistRow({
+  item,
+  quote,
+  quoteLoading = false,
+  metrics,
+  metricsLoading = false,
+  onClick,
+  onRemove
+}: WatchlistRowProps) {
+  const hasPrice = typeof quote?.price === "number" || typeof item.price === "number";
+  const hasChange = typeof quote?.changePercent === "number" || typeof item.changePercent === "number";
+  const hasVolume = typeof quote?.volume === "number";
   const price = quote?.price ?? item.price ?? 0;
   const change = quote?.changePercent ?? item.changePercent ?? 0;
+  const volume = quote?.volume ?? null;
+  const companyName = quote?.companyName || item.companyName || item.symbol;
   const color = change >= 0 ? "text-bullish" : "text-bearish";
   return (
-    <button
-      className="w-full rounded border border-transparent px-2 py-2 text-left transition hover:border-border hover:bg-panel"
+    <tr
+      className="cursor-pointer border-b border-border/70 text-xs transition hover:bg-panel"
       onClick={onClick}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -23,19 +38,39 @@ export function WatchlistRow({ item, quote, onClick, onRemove }: WatchlistRowPro
       }}
       title="Right click to remove"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="ticker-font text-xs font-semibold text-text-primary">{item.symbol}</div>
-          <div className="line-clamp-1 text-[11px] text-text-muted">{item.companyName}</div>
-        </div>
-        <div className="text-right">
-          <div className="ticker-font text-xs text-text-primary">{formatPrice(price)}</div>
-          <div className={`ticker-font text-[11px] ${color}`}>{formatPercent(change)}</div>
-        </div>
-      </div>
-      <div className="mt-1">
-        <Sparkline values={item.sparkline ?? []} />
-      </div>
-    </button>
+      <td className="px-2 py-2 align-middle ticker-font font-semibold text-text-primary">{item.symbol}</td>
+      <td className="max-w-[220px] px-2 py-2 align-middle text-text-muted">
+        <div className="line-clamp-1">{companyName}</div>
+      </td>
+      <td className="px-2 py-2 align-middle text-right ticker-font text-text-primary">
+        {quoteLoading && !hasPrice ? "..." : hasPrice ? formatPrice(price) : "--"}
+      </td>
+      <td className={`px-2 py-2 align-middle text-right ticker-font ${color}`}>
+        {quoteLoading && !hasChange ? "..." : hasChange ? formatPercent(change) : "--"}
+      </td>
+      <td className="px-2 py-2 align-middle text-right ticker-font text-text-primary">
+        {quoteLoading && !hasVolume ? "..." : hasVolume && volume !== null ? formatCompactNumber(volume) : "--"}
+      </td>
+      <td className="px-2 py-2 align-middle text-right ticker-font text-text-primary">
+        {metricsLoading && metrics?.relativeVolume === undefined
+          ? "..."
+          : typeof metrics?.relativeVolume === "number"
+            ? metrics.relativeVolume.toFixed(2)
+            : "--"}
+      </td>
+      <td className="px-2 py-2 align-middle text-right ticker-font text-text-primary">
+        {metricsLoading && metrics?.rsi === undefined ? "..." : typeof metrics?.rsi === "number" ? metrics.rsi.toFixed(2) : "--"}
+      </td>
+      <td className="px-2 py-2 align-middle text-right ticker-font text-text-primary">
+        {metricsLoading && metrics?.macd === undefined
+          ? "..."
+          : typeof metrics?.macd === "number"
+            ? metrics.macd.toFixed(2)
+            : "--"}
+      </td>
+      <td className="px-2 py-2 align-middle text-text-muted">
+        {metricsLoading && !metrics?.sector ? "..." : metrics?.sector || "--"}
+      </td>
+    </tr>
   );
 }
